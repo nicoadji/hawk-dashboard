@@ -84,15 +84,15 @@ if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 // Parameter per Hawk: urutan 18 bidang W sesudah TP LS konfigurasi (DashBarisHawk di hawkKendali.mqh).
 const P = { MM: 0, lot: 1, maxLevel: 2, marginLev: 3, xLot: 4, useTR: 5, exitUSD: 6, addP: 7, exitPct: 8, useSL: 9, lossUSD: 10, addM: 11,
             lossPct: 12, pips: 13, emaA: 14, emaB: 15, bidP: 16, bidM: 17 };
-// Baris 0-6 (sketsa): tiga kotak Price / SL / TP dengan label comment LS. 0-4 = LS Param 01-05, 5 = LS 08, 6 = LS konfigurasi.
+// Baris dashboard = nomor LS: 0 = LS konfigurasi, 1-5 = LS Param 01-05, 8 = LS Param 08. Tiga kotak Price / SL / TP dengan label comment LS.
 const BARIS = [
-  { lbl: "-/lot/MM", sel: [null, { k: "lot" }, { k: "MM" }] },
-  { lbl: "maxLev/marginLev/xLot", sel: [{ k: "maxLevel", bulat: true }, { k: "marginLev" }, { k: "xLot" }] },
-  { lbl: "TR/exitUSD.add+/exit%", sel: [{ k: "useTR", bulat: true }, { gabung: ["exitUSD", "addP"] }, { k: "exitPct" }] },
-  { lbl: "useSL/lossUSD.add-/loss%", sel: [{ k: "useSL", bulat: true }, { gabung: ["lossUSD", "addM"] }, { k: "lossPct" }] },
-  { lbl: "-/Pips/EMA", sel: [null, { k: "pips" }, { gabung: ["emaA", "emaB"] }] },
-  { lbl: "-/bid+/bid-", sel: [null, { k: "bidP", bid: true }, { k: "bidM", bid: true }] },
-  { lbl: "abhcEeXx.LL/nMagic.sw/follow", sel: [{ konf: "harga" }, { konf: "sl" }, { konf: "tp" }] },
+  { no: "0", lbl: "abhcEeXx.LL/nMagic.sw/follow", sel: [{ konf: "harga" }, { konf: "sl" }, { konf: "tp" }] },
+  { no: "1", lbl: "-/lot/MM", sel: [null, { k: "lot" }, { k: "MM" }] },
+  { no: "2", lbl: "maxLev/marginLev/xLot", sel: [{ k: "maxLevel", bulat: true }, { k: "marginLev" }, { k: "xLot" }] },
+  { no: "3", lbl: "TR/exitUSD.add+/exit%", sel: [{ k: "useTR", bulat: true }, { gabung: ["exitUSD", "addP"] }, { k: "exitPct" }] },
+  { no: "4", lbl: "useSL/lossUSD.add-/loss%", sel: [{ k: "useSL", bulat: true }, { gabung: ["lossUSD", "addM"] }, { k: "lossPct" }] },
+  { no: "5", lbl: "-/Pips/EMA", sel: [null, { k: "pips" }, { gabung: ["emaA", "emaB"] }] },
+  { no: "8", lbl: "-/bid+/bid-", sel: [null, { k: "bidP", bid: true }, { k: "bidM", bid: true }] },
 ];
 // Nama parameter di perintah channel (TgNamaParam di hawkTelegram.mqh).
 const NAMA = { MM: "MM", lot: "lot", maxLevel: "maxLevel", marginLev: "marginLev", xLot: "xLot", useTR: "useTR", exitUSD: "exitUSD", addP: "add+",
@@ -376,7 +376,7 @@ function tampil() {
        + (w.npos ? w.npos + " posisi · " + angka(w.lot, 2) + " lot · L" + w.lvl + ' · <span class="' + (w.profit >= 0 ? "pos" : "neg") + '">' + tanda(w.profit) + "</span>" : "tanpa posisi")
        + (w.npnd ? " · " + w.npnd + " pending" : "") + (c.hawk.length > 1 ? " · " + c.hawk.map(x => (adaUbahHawk(a, c, x) ? "*" : "") + x.no).join(" ") : "") + "</div>";
     BARIS.forEach((r, ri) => {
-      h += '<div class="baris"><div class="no">' + ri + '</div><div class="lbl">' + esc(r.lbl) + "</div>";
+      h += '<div class="baris"><div class="no">' + r.no + '</div><div class="lbl">' + esc(r.lbl) + "</div>";
       r.sel.forEach((sel, ki) => {
         const key = kunciSel(a, c, w, ri, ki), awal = nilaiAwal(w, sel, c.digit);
         if (!sel || (sel.konf && !konfAda) || kunci) { h += '<input disabled value="' + (sel && kunci && !(sel.konf && !konfAda) ? esc(awal) : "-") + '">'; return; }
@@ -388,9 +388,9 @@ function tampil() {
     h += '<div class="aksi"><button class="merah kiri" id="tutup"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
        + '<button class="ghost" id="reset"' + mati + ">Reset</button><button id=\"ok\"" + mati + ">OK</button></div>"
        + "<details><summary>Arti kotak dan tombol</summary><ul>"
-       + "<li>Kotak = Price / SL / TP LS Param (SL tanpa 9000 di depan). Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
-       + "<li>Baris 2: exitUSD.add+ (100.03 = exitUSD 100 + add+ 3). Baris 3: lossUSD.add-. Baris 4: emaA.emaB (100.50 = emaA 100, emaB 50).</li>"
-       + "<li>Baris 6: harga LS konfigurasi abhcEeXx.LL (ganti TF / Loop) · SL 0.1 / 0.0 = cekSideways on/off, abhcEeXx.1 = pindah Hawk · TP follow akun.level (0 = mati).</li>"
+       + "<li>Nomor baris = nomor LS: 0 = LS konfigurasi, 1-5 = LS Param 01-05, 8 = LS Param 08. Kotak = Price / SL / TP (SL tanpa 9000 di depan). Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
+       + "<li>Baris 0: harga abhcEeXx.LL (ganti TF / Loop) · SL 0.1 / 0.0 = cekSideways on/off, abhcEeXx.1 = pindah Hawk · TP follow akun.level (0 = mati).</li>"
+       + "<li>Baris 3: exitUSD.add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD.add-. Baris 5: emaA.emaB (100.50 = emaA 100, emaB 50).</li>"
        + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
        + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details></div>";
   }
