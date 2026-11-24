@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Dashboard hawk</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!--
+  Dashboard hawk (Telegram Mini App). Halaman statis: data EA ikut di fragmen URL (#v1.{zlib base64url}) yang dibuat penjaga bot
+  (hawkTelegram.mqh, TgDashKirim) dan tidak pernah dikirim ke server halaman ini. Tombol OK / Reset / Tutup mengirim baris perintah channel
+  ("@{akun} {simbol} ...") ke bot lewat Telegram.WebApp.sendData; EA menjalankannya seperti perintah channel.
+-->
+<style>
+:root {
+  --bg: var(--tg-theme-bg-color, #1c1c1d);
+  --bg2: var(--tg-theme-secondary-bg-color, #2a2a2c);
+  --tx: var(--tg-theme-text-color, #f1f1f1);
+  --hint: var(--tg-theme-hint-color, #9a9a9f);
+  --btn: var(--tg-theme-button-color, #2ea6ff);
+  --btntx: var(--tg-theme-button-text-color, #ffffff);
+  --red: var(--tg-theme-destructive-text-color, #ff5a5f);
+  --green: #3ccf7a;
+  --edit: #f5b942;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--tx); font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body { padding: 10px 10px calc(14px + env(safe-area-inset-bottom)); }
+main { max-width: 720px; margin: 0 auto; }
+.muted { color: var(--hint); font-size: 12px; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.tab { flex: 0 0 auto; border: 1px solid var(--bg2); background: var(--bg2); color: var(--tx); border-radius: 16px; padding: 6px 12px; font-size: 13px; font-weight: 500; }
+.tab.on { background: var(--btn); color: var(--btntx); border-color: var(--btn); }
+.tab .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--edit); margin-left: 5px; vertical-align: middle; }
+.card { background: var(--bg2); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.akun h2 { margin: 0 0 2px; font-size: 16px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 12px; font-size: 13px; margin-top: 6px; }
+.grid b { font-weight: 600; }
+.pos { color: var(--green); } .neg { color: var(--red); }
+.badge { font-size: 11px; border-radius: 6px; padding: 1px 6px; margin-left: 6px; background: var(--bg); color: var(--hint); vertical-align: middle; }
+.row-tp { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.row-tp input { width: 130px; flex: 0 0 130px; }
+.hawkhead { display: flex; align-items: center; gap: 8px; }
+.hawkhead .tipe { font-size: 26px; font-weight: 700; letter-spacing: 1px; }
+.hawkhead .konf { font-size: 20px; font-weight: 600; text-decoration: underline; text-underline-offset: 5px; flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.nav { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
+.nav button { width: 34px; height: 32px; padding: 0; font-size: 14px; }
+.sub { margin: 2px 0 8px; }
+/* Baris 0-6: nomor, tiga kotak, label (di layar sempit label pindah ke atas kotak). */
+.baris { display: grid; grid-template-columns: 20px 1fr 1fr 1fr 96px; gap: 4px; align-items: center; margin: 4px 0; }
+.baris .no { color: var(--hint); font-size: 18px; text-align: center; }
+.baris .lbl { font-size: 11px; color: var(--hint); line-height: 1.2; word-break: break-word; padding-left: 4px; order: 5; }
+@media (max-width: 560px) {
+  .baris { grid-template-columns: 18px 1fr 1fr 1fr; row-gap: 1px; margin: 6px 0; }
+  .baris .no { grid-row: 1 / 3; }
+  .baris .lbl { grid-column: 2 / 5; grid-row: 1; order: 0; padding-left: 2px; }
+  input { font-size: 14px; padding: 7px 4px; }
+}
+input { width: 100%; min-width: 0; background: var(--bg); color: var(--tx); border: 1px solid #4a4a4f; border-radius: 6px; padding: 7px 5px; font-size: 15px; font-variant-numeric: tabular-nums; }
+input:disabled { opacity: .35; }
+input.ubah { border-color: var(--edit); box-shadow: 0 0 0 1px var(--edit) inset; }
+input.salah { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; }
+button { background: var(--btn); color: var(--btntx); border: 0; border-radius: 8px; padding: 9px 16px; font-size: 15px; font-weight: 600; cursor: pointer; }
+button.ghost { background: transparent; color: var(--tx); border: 1px solid #5a5a5f; }
+button.merah { background: transparent; color: var(--red); border: 1px solid var(--red); }
+button:disabled { opacity: .4; cursor: default; }
+.aksi { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
+.aksi .kiri { margin-right: auto; }
+.err { background: #3a1d1f; color: #ffb4b4; border-radius: 10px; padding: 10px 12px; }
+details { margin-top: 10px; font-size: 12px; color: var(--hint); }
+details ul { padding-left: 18px; margin: 6px 0 0; }
+details li { margin: 3px 0; }
+pre { white-space: pre-wrap; word-break: break-all; background: var(--bg); padding: 8px; border-radius: 8px; font-size: 12px; }
+.pending { border: 1px dashed var(--edit); }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Memuat data dashboard...</p></main>
+<script>
+"use strict";
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+// Parameter per Hawk: urutan 18 bidang W sesudah TP LS konfigurasi (DashBarisHawk di hawkKendali.mqh).
+const P = { MM: 0, lot: 1, maxLevel: 2, marginLev: 3, xLot: 4, useTR: 5, exitUSD: 6, addP: 7, exitPct: 8, useSL: 9, lossUSD: 10, addM: 11,
+            lossPct: 12, pips: 13, emaA: 14, emaB: 15, bidP: 16, bidM: 17 };
+// Baris 0-6 (sketsa): tiga kotak Price / SL / TP dengan label comment LS. 0-4 = LS Param 01-05, 5 = LS 08, 6 = LS konfigurasi.
+const BARIS = [
+  { lbl: "-/lot/MM", sel: [null, { k: "lot" }, { k: "MM" }] },
+  { lbl: "maxLev/marginLev/xLot", sel: [{ k: "maxLevel", bulat: true }, { k: "marginLev" }, { k: "xLot" }] },
+  { lbl: "TR/exitUSD.add+/exit%", sel: [{ k: "useTR", bulat: true }, { gabung: ["exitUSD", "addP"] }, { k: "exitPct" }] },
+  { lbl: "useSL/lossUSD.add-/loss%", sel: [{ k: "useSL", bulat: true }, { gabung: ["lossUSD", "addM"] }, { k: "lossPct" }] },
+  { lbl: "-/Pips/EMA", sel: [null, { k: "pips" }, { gabung: ["emaA", "emaB"] }] },
+  { lbl: "-/bid+/bid-", sel: [null, { k: "bidP", bid: true }, { k: "bidM", bid: true }] },
+  { lbl: "abhcEeXx.LL/nMagic.sw/follow", sel: [{ konf: "harga" }, { konf: "sl" }, { konf: "tp" }] },
+];
+// Nama parameter di perintah channel (TgNamaParam di hawkTelegram.mqh).
+const NAMA = { MM: "MM", lot: "lot", maxLevel: "maxLevel", marginLev: "marginLev", xLot: "xLot", useTR: "useTR", exitUSD: "exitUSD", addP: "add+",
+               exitPct: "exitPct", useSL: "useSL", lossUSD: "lossUSD", addM: "add-", lossPct: "lossPct", pips: "pips", emaA: "emaA", emaB: "emaB",
+               bidP: "exitBid+", bidM: "exitBid-" };
+
+let D = null;
+let pilihAkun = 0;
+const pilihChart = {}, pilihHawk = {};
+const ubah = {};    // "login|simbol|Hawk|baris|kolom" -> teks yang diketik (belum dikirim)
+const tpBaru = {};  // "login|simbol" -> TP LS Kendali yang diketik
+
+// ---------- data ----------
+function b64url(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// Inflate zlib cadangan bila DecompressionStream tidak ada (algoritma puff).
+function inflateZlib(src) {
+  let p = 2, buf = 0, cnt = 0;
+  const out = [];
+  const bits = n => { while (cnt < n) { if (p >= src.length) throw new Error("data"); buf |= src[p++] << cnt; cnt += 8; } const v = buf & ((1 << n) - 1); buf >>>= n; cnt -= n; return v; };
+  const build = lens => {
+    const count = new Uint16Array(16), offs = new Uint16Array(16), sym = new Uint16Array(lens.length);
+    for (const l of lens) count[l]++;
+    count[0] = 0;
+    for (let i = 1; i < 16; i++) offs[i] = offs[i - 1] + count[i - 1];
+    for (let i = 0; i < lens.length; i++) if (lens[i]) sym[offs[lens[i]]++] = i;
+    return { count, sym };
+  };
+  const decode = h => {
+    let code = 0, first = 0, index = 0;
+    for (let len = 1; len < 16; len++) {
+      code |= bits(1);
+      const c = h.count[len];
+      if (code - c < first) return h.sym[index + (code - first)];
+      index += c; first += c; first <<= 1; code <<= 1;
+    }
+    throw new Error("kode");
+  };
+  const LB = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  const LE = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  const DB = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  const DE = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  let last;
+  do {
+    last = bits(1);
+    const type = bits(2);
+    if (type === 0) {
+      buf = 0; cnt = 0;
+      const len = src[p] | (src[p + 1] << 8);
+      p += 4;
+      for (let i = 0; i < len; i++) out.push(src[p++]);
+      continue;
+    }
+    let lc, dc;
+    if (type === 1) {
+      const l = [];
+      for (let i = 0; i < 288; i++) l.push(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
+      lc = build(l); dc = build(new Array(30).fill(5));
+    } else if (type === 2) {
+      const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
+      const order = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15], l = new Array(19).fill(0);
+      for (let i = 0; i < ncode; i++) l[order[i]] = bits(3);
+      const ch = build(l), lens = [];
+      while (lens.length < nlen + ndist) {
+        const s = decode(ch);
+        if (s < 16) lens.push(s);
+        else {
+          let rep, val = 0;
+          if (s === 16) { val = lens[lens.length - 1]; rep = 3 + bits(2); } else if (s === 17) rep = 3 + bits(3); else rep = 11 + bits(7);
+          while (rep--) lens.push(val);
+        }
+      }
+      lc = build(lens.slice(0, nlen)); dc = build(lens.slice(nlen));
+    } else throw new Error("blok");
+    for (;;) {
+      let s = decode(lc);
+      if (s < 256) out.push(s);
+      else if (s === 256) break;
+      else {
+        s -= 257;
+        const len = LB[s] + bits(LE[s]), ds = decode(dc), dist = DB[ds] + bits(DE[ds]);
+        for (let i = 0; i < len; i++) out.push(out[out.length - dist]);
+      }
+    }
+  } while (!last);
+  return new Uint8Array(out);
+}
+
+async function bukaZlib(bytes) {
+  if (typeof DecompressionStream !== "undefined") {
+    try {
+      const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+      return new Uint8Array(await new Response(s).arrayBuffer());
+    } catch (e) {}
+  }
+  return inflateZlib(bytes);
+}
+
+function urai(teks) {
+  const d = { vps: "", ts: 0, peran: 1, akun: [] }, akun = {};
+  for (const b of teks.split("\n")) {
+    const f = b.split("|");
+    if (f[0] === "H" && f.length >= 5) { d.vps = f[2]; d.ts = +f[3]; d.peran = +f[4]; }
+    else if (f[0] === "A" && f.length >= 14) {
+      const a = { login: f[1], nama: f[2], broker: f[3], cur: f[4], bal: +f[5], eq: +f[6], fl: +f[7], ml: +f[8], demo: f[9] === "1",
+                  npos: +f[11], lot: +f[12], ts: +f[13], chart: [] };
+      akun[a.login] = a; d.akun.push(a);
+    } else if (f[0] === "S" && f.length >= 5 && akun[f[1]]) {
+      akun[f[1]].chart.push({ sym: f[2], digit: +f[3], tp: f[4], hawk: [] });
+    } else if (f[0] === "W" && f.length >= 32 && akun[f[1]]) {
+      let c = akun[f[1]].chart.find(x => x.sym === f[2]);
+      if (!c) { c = { sym: f[2], digit: 5, tp: "0", hawk: [] }; akun[f[1]].chart.push(c); }
+      c.hawk.push({ no: f[3], tipe: f[4], ab: f[5], harga: f[6], sl: f[7], tp: f[8], p: f.slice(9, 27),
+                    npos: +f[27], lot: +f[28], profit: +f[29], lvl: +f[30], npnd: +f[31] });
+    }
+  }
+  return d;
+}
+
+// ---------- format ----------
+const uang = x => (isFinite(x) ? x : 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const tanda = x => (x > 0 ? "+" : "") + uang(x);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function jamWIB(ts) { const d = new Date((ts + 7 * 3600) * 1000); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); }
+function angka(x, des) {
+  if (!isFinite(x)) return "0";
+  let s = (+x).toFixed(des);
+  if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+  return s === "-0" ? "0" : s;
+}
+// Isi awal kotak (SL LS konfigurasi tanpa 9 di depan: 0.1 / 0.0, atau abhcEeXx.S saat pindah menunggu).
+function nilaiAwal(h, sel, digit) {
+  if (!sel) return "";
+  if (sel.konf) {
+    if (h.harga === "-") return "";
+    if (sel.konf === "harga") return h.harga;
+    if (sel.konf === "tp") return h.tp;
+    const n = +h.sl;
+    return (n >= 900000000 ? n - 900000000 : n - 90000000).toFixed(1);
+  }
+  if (sel.gabung) {
+    const a = +h.p[P[sel.gabung[0]]], b = +h.p[P[sel.gabung[1]]];
+    return b > 0 ? Math.floor(a) + "." + String(Math.round(b)).padStart(2, "0") : angka(a, 2);
+  }
+  return angka(+h.p[P[sel.k]], sel.bid ? digit : 2);
+}
+
+// ---------- perintah ----------
+const kunciSel = (a, c, h, r, k) => [a.login, c.sym, h.no, r, k].join("|");
+// Angka sah untuk perintah: maks 9 digit sebelum koma dan des digit sesudahnya (koma boleh); null = tidak sah.
+function teksAngka(s, des) {
+  s = String(s).trim().replace(",", ".");
+  if (!new RegExp("^\\d{1,9}(\\.\\d{0," + des + "})?$").test(s)) return null;
+  return s.replace(/\.$/, "");
+}
+
+// Pasangan "nama nilai" dari kotak yang diubah pada satu Hawk; kotak tidak sah masuk salah.
+function pasanganHawk(a, c, h, salah) {
+  const pas = [];
+  BARIS.forEach((r, ri) => r.sel.forEach((sel, ki) => {
+    const key = kunciSel(a, c, h, ri, ki);
+    if (!sel || !(key in ubah)) return;
+    const s = ubah[key];
+    if (sel.konf) {
+      const v = teksAngka(s, sel.konf === "sl" ? 1 : 2);
+      if (v === null || (sel.konf === "harga" && v.split(".")[0].slice(0, 4) !== h.harga.split(".")[0].slice(0, 4))) { salah.push(key); return; }
+      pas.push([sel.konf === "harga" ? "konf" : sel.konf === "sl" ? "slkonf" : "follow", v]);
+    } else if (sel.gabung) {
+      const v = teksAngka(s, 2);
+      if (v === null) { salah.push(key); return; }
+      const [bulat, pecah = ""] = v.split(".");
+      const b = pecah === "" ? 0 : parseInt((pecah + "0").slice(0, 2), 10);
+      if (+bulat !== Math.floor(+h.p[P[sel.gabung[0]]])) pas.push([NAMA[sel.gabung[0]], String(+bulat)]);
+      if (b !== Math.round(+h.p[P[sel.gabung[1]]])) pas.push([NAMA[sel.gabung[1]], String(b)]);
+    } else {
+      const v = teksAngka(s, sel.bid ? Math.min(Math.max(c.digit, 0), 6) : 2);
+      if (v === null || (sel.bulat && v.indexOf(".") >= 0)) { salah.push(key); return; }
+      pas.push([NAMA[sel.k], v]);
+    }
+  }));
+  return pas;
+}
+
+// Semua perubahan yang menunggu (semua akun / chart / Hawk) -> baris perintah, maks 6 pasang per baris.
+function semuaPerintah(salah) {
+  const baris = [], ringkas = [];
+  for (const a of D.akun) for (const c of a.chart) {
+    for (const h of c.hawk) {
+      const pas = pasanganHawk(a, c, h, salah);
+      for (let i = 0; i < pas.length; i += 6) baris.push("@" + a.login + " " + c.sym + " " + h.no + " " + pas.slice(i, i + 6).map(x => x[0] + " " + x[1]).join(" "));
+      if (pas.length) ringkas.push(a.login + " " + c.sym + " Hawk " + h.no + ": " + pas.map(x => x[0] + " " + x[1]).join(", "));
+    }
+    const tp = tpBaru[a.login + "|" + c.sym];
+    if (tp) {
+      const v = teksAngka(tp, 2);
+      if (v === null || +v >= 10000 || (+v > 0 && +v < 1)) salah.push("tp|" + a.login + "|" + c.sym);
+      else { baris.push("@" + a.login + " " + c.sym + " " + v); ringkas.push(a.login + " " + c.sym + ": TP LS Kendali " + v); }
+    }
+  }
+  return { baris, ringkas };
+}
+
+// Popup Telegram hanya di dalam aplikasi Telegram (di browser biasa platform = "unknown" dan popup tidak pernah dijawab).
+const diTelegram = () => !!(tg && tg.platform && tg.platform !== "unknown");
+function alertTg(m) { if (diTelegram() && tg.isVersionAtLeast("6.2")) tg.showAlert(m); else alert(m); }
+function confirmTg(m, cb) { if (diTelegram() && tg.isVersionAtLeast("6.2")) tg.showConfirm(m.slice(0, 1000), cb); else cb(confirm(m)); }
+
+// Kirim semua perubahan yang menunggu (+ aksi tambahan Reset / Tutup) lewat sendData; di luar tombol bot: perintah ditampilkan untuk disalin.
+function kirim(barisTambah, ringkasTambah, judul) {
+  const salah = [], s = semuaPerintah(salah);
+  if (salah.length) { tampil(); alertTg("Ada kotak yang isinya tidak sah (merah). Perbaiki dulu."); return; }
+  const baris = s.baris.concat(barisTambah), ringkas = s.ringkas.concat(ringkasTambah);
+  if (!baris.length) { alertTg("Belum ada perubahan."); return; }
+  const data = baris.join("\n");
+  if (baris.length > 40 || new Blob([data]).size > 4000) { alertTg("Perubahan terlalu banyak untuk sekali kirim. Kirim sebagian dulu."); return; }
+  confirmTg(judul + "\n\n" + ringkas.slice(0, 12).join("\n") + (ringkas.length > 12 ? "\n..." : ""), ok => {
+    if (!ok) return;
+    if (diTelegram()) {
+      try { if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success"); tg.sendData(data); return; } catch (e) {}
+    }
+    const box = document.getElementById("salin");
+    box.innerHTML = '<div class="card pending"><b>Halaman ini tidak dibuka dari tombol Dashboard bot.</b><div class="muted">Perintah di bawah sudah disalin; tempel di channel perintah:</div><pre>'
+                    + esc(data) + "</pre></div>";
+    if (navigator.clipboard) navigator.clipboard.writeText(data).catch(() => {});
+    box.scrollIntoView({ behavior: "smooth" });
+  });
+}
+
+// ---------- tampilan ----------
+const awalan = (a, c, h) => [a.login, c.sym, h.no].join("|") + "|";
+const adaUbahHawk = (a, c, h) => Object.keys(ubah).some(k => k.startsWith(awalan(a, c, h)));
+const adaUbahAkun = a => Object.keys(ubah).some(k => k.startsWith(a.login + "|")) || Object.keys(tpBaru).some(k => k.startsWith(a.login + "|") && tpBaru[k]);
+const akunIni = () => D.akun[Math.min(pilihAkun, D.akun.length - 1)];
+const chartIni = a => a.chart[Math.min(pilihChart[a.login] || 0, Math.max(a.chart.length - 1, 0))];
+
+function tampil() {
+  const app = document.getElementById("app");
+  if (!D.akun.length) { app.innerHTML = '<div class="err">Tidak ada akun di data ini.</div>'; return; }
+  const a = akunIni(), c = chartIni(a), salah = [];
+  semuaPerintah(salah);
+  let h = '<div class="muted">Dashboard hawk' + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts)
+        + " WIB · ketik /dash di bot untuk data terbaru</div>";
+  if (D.akun.length > 1)
+    h += '<div class="tabs">' + D.akun.map((x, i) => '<button class="tab' + (x === a ? " on" : "") + '" data-akun="' + i + '">' + esc(x.login)
+         + (adaUbahAkun(x) ? '<span class="dot"></span>' : "") + "</button>").join("") + "</div>";
+  h += '<div class="card akun"><h2>' + esc(a.login) + (a.nama ? " · " + esc(a.nama) : "") + '<span class="badge">' + (a.demo ? "DEMO" : "REAL") + "</span></h2>"
+     + '<div class="muted">' + esc(a.broker) + '</div><div class="grid">'
+     + "<div>Balance <b>" + uang(a.bal) + " " + esc(a.cur) + "</b></div><div>Equity <b>" + uang(a.eq) + "</b></div>"
+     + '<div>Floating <b class="' + (a.fl >= 0 ? "pos" : "neg") + '">' + tanda(a.fl) + '</b></div><div>Margin level <b class="' + (a.ml > 0 && a.ml < 300 ? "neg" : "") + '">'
+     + (a.ml > 0 ? uang(a.ml) + "%" : "-") + "</b></div><div>Posisi <b>" + a.npos + "</b> · " + angka(a.lot, 2) + ' lot</div><div class="muted">data ' + jamWIB(a.ts) + " WIB</div></div></div>";
+  if (!c) { app.innerHTML = h + '<div class="card muted">Akun ini belum punya chart hawk aktif.</div><div id="salin"></div>'; pasang(); return; }
+  if (a.chart.length > 1)
+    h += '<div class="tabs">' + a.chart.map((x, i) => '<button class="tab' + (x === c ? " on" : "") + '" data-chart="' + i + '">' + esc(x.sym) + "</button>").join("") + "</div>";
+  const kTP = a.login + "|" + c.sym, tpCls = salah.indexOf("tp|" + kTP) >= 0 ? "salah" : tpBaru[kTP] ? "ubah" : "";
+  h += '<div class="card"><div class="muted">' + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
+     + '<div class="row-tp"><input id="tp" inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span></div>'
+     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6/7 LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
+  if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK.</div>"
+                        + '<div class="aksi"><button id="ok">OK</button></div>';
+  else {
+    const hi = Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
+    h += '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(w.tipe) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>"
+       + '<div class="nav"><button class="ghost" data-hawk="-1"' + satu + '>&#9664;</button><span class="muted">' + (hi + 1) + "/" + c.hawk.length
+       + '</span><button class="ghost" data-hawk="1"' + satu + ">&#9654;</button></div></div>"
+       + '<div class="muted sub">Hawk ' + esc(w.no) + " · " + esc(w.ab) + " · "
+       + (w.npos ? w.npos + " posisi · " + angka(w.lot, 2) + " lot · L" + w.lvl + ' · <span class="' + (w.profit >= 0 ? "pos" : "neg") + '">' + tanda(w.profit) + "</span>" : "tanpa posisi")
+       + (w.npnd ? " · " + w.npnd + " pending" : "") + (c.hawk.length > 1 ? " · " + c.hawk.map(x => (adaUbahHawk(a, c, x) ? "*" : "") + x.no).join(" ") : "") + "</div>";
+    BARIS.forEach((r, ri) => {
+      h += '<div class="baris"><div class="no">' + ri + '</div><div class="lbl">' + esc(r.lbl) + "</div>";
+      r.sel.forEach((sel, ki) => {
+        const key = kunciSel(a, c, w, ri, ki), awal = nilaiAwal(w, sel, c.digit);
+        if (!sel || (sel.konf && !konfAda)) { h += '<input disabled value="-">'; return; }
+        const cls = salah.indexOf(key) >= 0 ? "salah" : key in ubah ? "ubah" : "";
+        h += '<input inputmode="decimal" data-key="' + esc(key) + '" data-awal="' + esc(awal) + '" class="' + cls + '" value="' + esc(key in ubah ? ubah[key] : awal) + '">';
+      });
+      h += "</div>";
+    });
+    h += '<div class="aksi"><button class="merah kiri" id="tutup"' + (w.npos + w.npnd ? "" : " disabled") + ">Tutup</button>"
+       + '<button class="ghost" id="reset">Reset</button><button id="ok">OK</button></div>'
+       + "<details><summary>Arti kotak dan tombol</summary><ul>"
+       + "<li>Kotak = Price / SL / TP LS Param (SL tanpa 9000 di depan). Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
+       + "<li>Baris 2: exitUSD.add+ (100.03 = exitUSD 100 + add+ 3). Baris 3: lossUSD.add-. Baris 4: emaA.emaB (100.50 = emaA 100, emaB 50).</li>"
+       + "<li>Baris 6: harga LS konfigurasi abhcEeXx.LL (ganti TF / Loop) · SL 0.1 / 0.0 = cekSideways on/off, abhcEeXx.1 = pindah Hawk · TP follow akun.level (0 = mati).</li>"
+       + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
+       + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details></div>";
+  }
+  app.innerHTML = h + '<div id="salin"></div>';
+  pasang();
+}
+
+function pasang() {
+  const a = akunIni(), c = chartIni(a);
+  document.querySelectorAll("[data-akun]").forEach(b => { b.onclick = () => { pilihAkun = +b.dataset.akun; tampil(); }; });
+  document.querySelectorAll("[data-chart]").forEach(b => { b.onclick = () => { pilihChart[a.login] = +b.dataset.chart; tampil(); }; });
+  if (!c) return;
+  const kTP = a.login + "|" + c.sym;
+  document.querySelectorAll("[data-hawk]").forEach(b => {
+    b.onclick = () => { const n = c.hawk.length; pilihHawk[kTP] = ((pilihHawk[kTP] || 0) + +b.dataset.hawk + n) % n; tampil(); };
+  });
+  document.querySelectorAll("input[data-key]").forEach(i => {
+    i.oninput = () => {
+      if (i.value.trim() === i.dataset.awal) delete ubah[i.dataset.key]; else ubah[i.dataset.key] = i.value.trim();
+      i.className = i.dataset.key in ubah ? "ubah" : "";
+    };
+  });
+  const tp = document.getElementById("tp");
+  if (tp) tp.oninput = () => { tpBaru[kTP] = tp.value.trim(); tp.className = tpBaru[kTP] ? "ubah" : ""; };
+  const ok = document.getElementById("ok");
+  if (ok) ok.onclick = () => kirim([], [], "Kirim perubahan ke EA?");
+  if (!c.hawk.length) return;
+  const w = c.hawk[Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1)];
+  document.getElementById("reset").onclick = () => {
+    Object.keys(ubah).filter(k => k.startsWith(awalan(a, c, w))).forEach(k => delete ubah[k]);
+    kirim(["@" + a.login + " " + c.sym + " " + w.no + " reset 1"],
+          [a.login + " " + c.sym + " Hawk " + w.no + ": RESET ke nilai awal (parameter, TF, Loop 99, follow mati, cekSideways .1)"], "Reset Hawk " + w.no + " ke nilai awal?");
+  };
+  document.getElementById("tutup").onclick = () => kirim(["@" + a.login + " " + c.sym + " tutup " + w.no],
+    [a.login + " " + c.sym + " Hawk " + w.no + ": TUTUP " + w.npos + " posisi + " + w.npnd + " pending"], "Tutup semua posisi Hawk " + w.no + "?");
+}
+
+(async function mulai() {
+  const app = document.getElementById("app");
+  try {
+    // Telegram menambahkan parameternya sendiri sesudah fragmen ("#v1.xxx?tgWebApp..." / "&tgWebApp..."): ambil hanya token v1.
+    const m = /v1\.([A-Za-z0-9_-]+)/.exec(location.hash || "");
+    if (!m) throw new Error("Data tidak ada. Buka halaman ini dari tombol Dashboard di chat bot hawk (ketik /dash).");
+    D = urai(new TextDecoder("utf-8").decode(await bukaZlib(b64url(m[1]))));
+    if (!D.ts) throw new Error("Data dashboard rusak. Ketik /dash di bot untuk tombol baru.");
+    tampil();
+  } catch (e) {
+    app.innerHTML = '<div class="err">' + esc(e.message || e) + "</div>";
+  }
+})();
+</script>
+</body>
+</html>
