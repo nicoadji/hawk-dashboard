@@ -207,10 +207,12 @@ function urai(teks) {
                   npos: +f[11], lot: +f[12], ts: +f[13], chart: [] };
       akun[a.login] = a; d.akun.push(a);
     } else if (f[0] === "S" && f.length >= 5 && akun[f[1]]) {
-      akun[f[1]].chart.push({ sym: f[2], digit: +f[3], tp: f[4], hawk: [] });
+      // Satu kartu per simbol (dua chart simbol sama di satu akun tidak boleh membuat perintah ganda).
+      if (!akun[f[1]].chart.some(x => x.sym === f[2])) akun[f[1]].chart.push({ sym: f[2], digit: +f[3], tp: f[4], hawk: [] });
     } else if (f[0] === "W" && f.length >= 32 && akun[f[1]]) {
       let c = akun[f[1]].chart.find(x => x.sym === f[2]);
       if (!c) { c = { sym: f[2], digit: 5, tp: "0", hawk: [] }; akun[f[1]].chart.push(c); }
+      if (c.hawk.some(x => x.no === f[3])) continue;
       c.hawk.push({ no: f[3], tipe: f[4], ab: f[5], harga: f[6], sl: f[7], tp: f[8], p: f.slice(9, 27),
                     npos: +f[27], lot: +f[28], profit: +f[29], lvl: +f[30], npnd: +f[31] });
     }
@@ -255,9 +257,10 @@ function teksAngka(s, des) {
   return s.replace(/\.$/, "");
 }
 
-// Pasangan "nama nilai" dari kotak yang diubah pada satu Hawk; kotak tidak sah masuk salah.
+// Pasangan "nama nilai" dari kotak yang diubah pada satu Hawk; kotak tidak sah masuk salah. slkonf (mungkin pindah Hawk) selalu terakhir,
+// karena konf / follow sesudahnya akan menulis ulang SL LS konfigurasi.
 function pasanganHawk(a, c, h, salah) {
-  const pas = [];
+  const pas = [], akhir = [];
   BARIS.forEach((r, ri) => r.sel.forEach((sel, ki) => {
     const key = kunciSel(a, c, h, ri, ki);
     if (!sel || !(key in ubah)) return;
@@ -265,7 +268,7 @@ function pasanganHawk(a, c, h, salah) {
     if (sel.konf) {
       const v = teksAngka(s, sel.konf === "sl" ? 1 : 2);
       if (v === null || (sel.konf === "harga" && v.split(".")[0].slice(0, 4) !== h.harga.split(".")[0].slice(0, 4))) { salah.push(key); return; }
-      pas.push([sel.konf === "harga" ? "konf" : sel.konf === "sl" ? "slkonf" : "follow", v]);
+      (sel.konf === "sl" ? akhir : pas).push([sel.konf === "harga" ? "konf" : sel.konf === "sl" ? "slkonf" : "follow", v]);
     } else if (sel.gabung) {
       const v = teksAngka(s, 2);
       if (v === null) { salah.push(key); return; }
@@ -279,7 +282,7 @@ function pasanganHawk(a, c, h, salah) {
       pas.push([NAMA[sel.k], v]);
     }
   }));
-  return pas;
+  return pas.concat(akhir);
 }
 
 // Semua perubahan yang menunggu (semua akun / chart / Hawk) -> baris perintah, maks 6 pasang per baris.
@@ -313,7 +316,10 @@ function kirim(barisTambah, ringkasTambah, judul) {
   const baris = s.baris.concat(barisTambah), ringkas = s.ringkas.concat(ringkasTambah);
   if (!baris.length) { alertTg("Belum ada perubahan."); return; }
   const data = baris.join("\n");
-  if (baris.length > 40 || new Blob([data]).size > 4000) { alertTg("Perubahan terlalu banyak untuk sekali kirim. Kirim sebagian dulu."); return; }
+  // EA menjalankan maks 9 baris per jenis (TP, ubah parameter, tutup) per kiriman.
+  const jenis = { K: 0, P: 0, C: 0 };
+  for (const b of baris) jenis[b.indexOf(" tutup ") > 0 ? "C" : b.split(" ").length === 3 ? "K" : "P"]++;
+  if (baris.length > 40 || jenis.K > 9 || jenis.P > 9 || jenis.C > 9 || new Blob([data]).size > 4000) { alertTg("Perubahan terlalu banyak untuk sekali kirim (maks 9 Hawk). Kirim sebagian dulu."); return; }
   confirmTg(judul + "\n\n" + ringkas.slice(0, 12).join("\n") + (ringkas.length > 12 ? "\n..." : ""), ok => {
     if (!ok) return;
     if (diTelegram()) {
@@ -353,11 +359,14 @@ function tampil() {
   if (a.chart.length > 1)
     h += '<div class="tabs">' + a.chart.map((x, i) => '<button class="tab' + (x === c ? " on" : "") + '" data-chart="' + i + '">' + esc(x.sym) + "</button>").join("") + "</div>";
   const kTP = a.login + "|" + c.sym, tpCls = salah.indexOf("tp|" + kTP) >= 0 ? "salah" : tpBaru[kTP] ? "ubah" : "";
+  // Simbol yang tidak bisa ditulis di perintah channel (harus diawali huruf, ASCII tanpa spasi dan "|"): chart ini hanya bisa dilihat.
+  const kunci = !/^[A-Za-z][\x21-\x7b\x7d\x7e]{0,39}$/.test(c.sym), mati = kunci ? " disabled" : "";
+  if (kunci) h += '<div class="card err">Simbol ' + esc(c.sym) + " tidak bisa dipakai di perintah channel; chart ini hanya bisa dilihat.</div>";
   h += '<div class="card"><div class="muted">' + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
-     + '<div class="row-tp"><input id="tp" inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span></div>'
+     + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span></div>'
      + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6/7 LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
   if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK.</div>"
-                        + '<div class="aksi"><button id="ok">OK</button></div>';
+                        + '<div class="aksi"><button id="ok"' + mati + ">OK</button></div>";
   else {
     const hi = Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
     h += '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(w.tipe) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>"
@@ -370,14 +379,14 @@ function tampil() {
       h += '<div class="baris"><div class="no">' + ri + '</div><div class="lbl">' + esc(r.lbl) + "</div>";
       r.sel.forEach((sel, ki) => {
         const key = kunciSel(a, c, w, ri, ki), awal = nilaiAwal(w, sel, c.digit);
-        if (!sel || (sel.konf && !konfAda)) { h += '<input disabled value="-">'; return; }
+        if (!sel || (sel.konf && !konfAda) || kunci) { h += '<input disabled value="' + (sel && kunci && !(sel.konf && !konfAda) ? esc(awal) : "-") + '">'; return; }
         const cls = salah.indexOf(key) >= 0 ? "salah" : key in ubah ? "ubah" : "";
         h += '<input inputmode="decimal" data-key="' + esc(key) + '" data-awal="' + esc(awal) + '" class="' + cls + '" value="' + esc(key in ubah ? ubah[key] : awal) + '">';
       });
       h += "</div>";
     });
-    h += '<div class="aksi"><button class="merah kiri" id="tutup"' + (w.npos + w.npnd ? "" : " disabled") + ">Tutup</button>"
-       + '<button class="ghost" id="reset">Reset</button><button id="ok">OK</button></div>'
+    h += '<div class="aksi"><button class="merah kiri" id="tutup"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
+       + '<button class="ghost" id="reset"' + mati + ">Reset</button><button id=\"ok\"" + mati + ">OK</button></div>"
        + "<details><summary>Arti kotak dan tombol</summary><ul>"
        + "<li>Kotak = Price / SL / TP LS Param (SL tanpa 9000 di depan). Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
        + "<li>Baris 2: exitUSD.add+ (100.03 = exitUSD 100 + add+ 3). Baris 3: lossUSD.add-. Baris 4: emaA.emaB (100.50 = emaA 100, emaB 50).</li>"
