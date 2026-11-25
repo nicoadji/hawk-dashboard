@@ -122,7 +122,10 @@ const ubah = {};    // "login|simbol|Hawk|baris|kolom" -> teks yang diketik (bel
 const tpBaru = {};  // "login|simbol" -> TP LS Kendali yang diketik
 // Pengaturan global (kartu TP): Diversity n = daftar tipe Hawk (digit, 0 = mati) yang dibuat HANYA di akun + chart terpilih dengan ab dan TF harga e.
 const glob = { n: 0, a: 3, b: 8, e: 1, semua: false };
-const DIVERSITY = [[0, "-"], [123, "F1-3"], [456, "H1-3"], [789, "S1-3"], [147, "F1H1S1"], [258, "F2H2S2"], [369, "F3H3S3"], [123456789, "Hawk1-9"]];
+const DIVERSITY = [[0, "-"], [123456789, "9 Hawk1-9"], [123, "1 F1-3"], [456, "2 H1-3"], [789, "3 S1-3"], [147, "4 F1H1S1"], [258, "5 F2H2S2"], [369, "6 F3H3S3"]];
+// Kode D TP LS Kendali abeDi (KodeDiversity di EA) -> daftar tipe Hawk.
+const KODE_D = { 9: 123456789, 1: 123, 2: 456, 3: 789, 4: 147, 5: 258, 6: 369 };
+const kodeD = n => +Object.keys(KODE_D).find(d => KODE_D[d] === n);
 const tipeGlob = () => String(glob.n).split("").map(Number);
 
 // ---------- data ----------
@@ -315,11 +318,13 @@ function perintahHawk(a, c, h, salah) {
   if (pas.length) ringkas.push(a.login + " " + c.sym + " Hawk " + h.no + ": " + pas.map(x => x[0] + " " + x[1]).join(", "));
   return { baris, ringkas };
 }
-// TP LS Kendali yang diketik untuk satu akun + chart.
+// TP LS Kendali yang diketik untuk satu akun + chart. TP 5 digit abeDi (Diversity) diubah menjadi perintah buat (i 0 = akun ini, 1 = semua akun).
 function perintahTP(a, c, salah) {
-  const tp = tpBaru[a.login + "|" + c.sym], baris = [], ringkas = [];
+  const tp = tpBaru[a.login + "|" + c.sym];
+  let baris = [], ringkas = [];
   if (tp) {
-    const v = teksAngka(tp, 2);
+    const v = teksAngka(tp, 2), m = v && /^([1-5])(\d)([1-7])([1-69])([01])$/.exec(v);
+    if (m && KODE_D[m[4]]) return perintahGlobal({ n: KODE_D[m[4]], a: +m[1], b: +m[2], e: +m[3], semua: m[5] === "1" });
     if (v === null || +v >= 10000 || (+v > 0 && +v < 1)) salah.push("tp|" + a.login + "|" + c.sym);
     else { baris.push("@" + a.login + " " + c.sym + " " + v); ringkas.push("Akun " + a.login + " " + c.sym + ": TP LS Kendali " + v); }
   }
@@ -333,18 +338,18 @@ function semuaSalah() {
 }
 // Pengaturan global ("@akun SIMBOL ab0 buat n.e", BuatHawkGlobal di EA): akun terpilih saja, atau semua akun bila cakupan "Semua akun" dipilih
 // (akun dengan beberapa chart: simbol dasar sama dengan chart terpilih, mis. XAUUSD = XAUUSDm; tidak ada = dilewati).
-function perintahGlobal() {
-  const baris = [], ringkas = [], ab = "" + glob.a + glob.b, ai = akunIni(), ci = chartIni(ai);
-  if (!glob.n || !ci) return { baris, ringkas };
+function perintahGlobal(g = glob) {
+  const baris = [], ringkas = [], ab = "" + g.a + g.b, ai = akunIni(), ci = chartIni(ai), tipe = String(g.n).split("").map(Number);
+  if (!g.n || !ci) return { baris, ringkas };
   const dasar = s => String(s).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6), kena = [], lewat = [];
-  for (const a of glob.semua ? D.akun : [ai]) {
+  for (const a of g.semua ? D.akun : [ai]) {
     const c = a === ai ? ci : a.chart.length === 1 ? a.chart[0] : a.chart.find(x => x.sym === ci.sym) || a.chart.find(x => dasar(x.sym) === dasar(ci.sym));
     if (!c || !simbolSah(c.sym)) { lewat.push(a.login); continue; }
-    baris.push("@" + a.login + " " + c.sym + " " + ab + "0 buat " + glob.n + "." + glob.e);
+    baris.push("@" + a.login + " " + c.sym + " " + ab + "0 buat " + g.n + "." + g.e);
     kena.push(a.login + " " + c.sym);
   }
-  const apa = "buat " + DIVERSITY.find(x => x[0] === glob.n)[1] + " (Hawk " + tipeGlob().map(t => ab + t).join(" ") + ") TF " + NAMA_TF[glob.e] + "; yang sudah ada dilewati";
-  if (kena.length) ringkas.push(glob.semua ? "SEMUA " + kena.length + " akun: " + apa : "Akun " + kena[0] + " SAJA: " + apa);
+  const apa = "buat " + DIVERSITY.find(x => x[0] === g.n)[1].slice(2) + " (Hawk " + tipe.map(t => ab + t).join(" ") + ") TF " + NAMA_TF[g.e] + "; yang sudah ada dilewati";
+  if (kena.length) ringkas.push(g.semua ? "SEMUA " + kena.length + " akun: " + apa : "Akun " + kena[0] + " SAJA: " + apa);
   if (lewat.length) ringkas.push("Dilewati (chart " + ci.sym + " tidak ada): " + lewat.join(", "));
   return { baris, ringkas };
 }
@@ -362,7 +367,8 @@ function pilihGlobal(mati) {
     + sel("b", "Teknik b", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], v => v + " " + NAMA_B[v])
     + sel("e", "TF", [1, 2, 3, 4, 5, 6, 7], v => NAMA_TF[v], v => v <= eMaksGlobal())
     + '<label class="glob"><span>Untuk</span><select data-cakupan="1"' + mati + (glob.semua ? ' class="ubah"' : "") + '><option value="0"' + (glob.semua ? "" : " selected") + ">Akun ini ("
-    + esc(akunIni().login) + ')</option><option value="1"' + (glob.semua ? " selected" : "") + ">Semua akun (" + D.akun.length + ")</option></select></label></div>";
+    + esc(akunIni().login) + ')</option><option value="1"' + (glob.semua ? " selected" : "") + ">Semua akun (" + D.akun.length + ")</option></select></label>"
+    + (glob.n ? '<span class="muted">kode MT5 (TP LS Kendali): <b>' + glob.a + glob.b + glob.e + kodeD(glob.n) + (glob.semua ? 1 : 0) + "</b></span>" : "") + "</div>";
 }
 
 // Popup Telegram hanya di dalam aplikasi Telegram (di browser biasa platform = "unknown" dan popup tidak pernah dijawab).
@@ -414,7 +420,7 @@ const BANTUAN = "<details><summary>Arti kotak dan tombol</summary><ul>"
   + "<li>Baris 0: TF abhcEeXx . Loop (32781100.99 = Hawk 327, TF 1100, Loop 99) · pindah . sideways (0.1 = sideways on, 0.0 = off, 35981100.1 = pindah ke Hawk 359 TF 1100) · follow akun . level (58288.03 = ikut akun ...58288 dari L3, 0 = mati).</li>"
   + "<li>Pulldown a / b / e di samping nomor Hawk: ganti teknik zona a, teknik entry b, atau TF harga e; kotak pindah terisi otomatis (E, X, x mengikuti tipe Hawk, mis. Soldier3 e M5 = TF 4242) dan dikirim dengan OK. Ganti a/b = Hawk baru (posisi open diteruskan, tidak ditutup); pilihan abu-abu = Hawk tujuan sudah ada atau TF melewati MN1.</li>"
   + "<li>Baris 3: exitUSD . add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD . add-. Baris 5: emaA . emaB (100.50 = emaA 100, emaB 50); kotak pertama = tutupDini (10 aktif, 0 mati). Baris 7: eq &gt; (SL) dan eq &lt; (TP), dalam nilai akun (mis. 150000 dan 50000).</li>"
-  + "<li>Diversity / Zona a / Teknik b / TF / Untuk (kartu TP): buat Hawk di akun yang sedang dipilih (Untuk = Akun ini) atau di semua akun dashboard (Untuk = Semua akun); dikirim dengan OK paling kanan dan dikonfirmasi dulu (Akun ... SAJA / SEMUA n akun). Ganti akun = Diversity kembali -. Diversity = tipe Hawk: F1-3 = Farmer1-3, H1-3 = Hunter1-3, S1-3 = Soldier1-3, F1H1S1 / F2H2S2 / F3H3S3 = nomor 1 / 2 / 3 dari tiap kelompok, Hawk1-9 = semua (mis. a 3, b 8, F1H1S1 = Hawk 381 384 387). TF = TF harga (E, X, x mengikuti tipe); Hawk yang sudah ada dilewati. - = mati.</li>"
+  + "<li>Diversity / Zona a / Teknik b / TF / Untuk (kartu TP): buat Hawk di akun yang sedang dipilih (Untuk = Akun ini) atau di semua akun dashboard (Untuk = Semua akun); dikirim dengan OK paling kanan dan dikonfirmasi dulu (Akun ... SAJA / SEMUA n akun). Ganti akun = Diversity kembali -. Diversity = tipe Hawk: F1-3 = Farmer1-3, H1-3 = Hunter1-3, S1-3 = Soldier1-3, F1H1S1 / F2H2S2 / F3H3S3 = nomor 1 / 2 / 3 dari tiap kelompok, Hawk1-9 = semua (mis. a 3, b 8, F1H1S1 = Hawk 381 384 387). TF = TF harga (E, X, x mengikuti tipe); Hawk yang sudah ada dilewati. - = mati. Angka di depan pilihan Diversity = kode D; kode MT5 abeDi yang tampil bisa juga diisi langsung di TP LS Kendali MT5 atau di kotak TP baru (a, b, e TF 1-7, D, i 0 akun ini / 1 semua akun; mis. 38190 = Hawk1-9 ab 38 TF M1 akun ini).</li>"
   + "<li>Tiga jenis OK, masing-masing hanya mengirim bagiannya: OK di kanan TP baru = TP LS Kendali akun ini; OK paling kanan kartu TP = Diversity; OK di kartu Hawk = kotak Hawk itu saja. Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
   + "<li>Layar lebar (iPad miring, laptop): semua akun dan semua Hawk tampil berjejer; klik kartu akun untuk melihat Hawk-nya.</li>"
   + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details>";
@@ -515,7 +521,7 @@ function tampil() {
   h += '<div class="card"><div class="muted">' + (lebar ? esc(a.login) + " · " : "") + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
      + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><button id="oktp"' + mati + ">OK</button>"
      + pilihGlobal(mati) + '<button class="kanan" id="ok"' + mati + ">OK</button></div>"
-     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 tampilkan LS Param · 7 hapus LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
+     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 tampilkan LS Param · 7 hapus LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · abeDi Diversity (mis. 38190) · 9999 rem · 0 kosongkan</div></div>';
   if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK di sebelahnya, atau pakai Diversity.</div>";
   else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + '<div class="card">' + BANTUAN + "</div>";
   else h += kartuHawk(a, c, Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), false, salah, kunci, mati);
