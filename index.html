@@ -329,13 +329,17 @@ function semuaPerintah(salah) {
   if (glob.n > 0) {
     const dasar = s => String(s).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6);
     const symPilih = chartIni(akunIni()) ? chartIni(akunIni()).sym : "";
+    const ab = "" + glob.a + glob.b, kena = [], lewat = [];
     for (const a of D.akun) {
       const c = a.chart.length === 1 ? a.chart[0] : a.chart.find(x => x.sym === symPilih) || a.chart.find(x => dasar(x.sym) === dasar(symPilih));
-      if (!c || !simbolSah(c.sym)) { ringkas.push(a.login + ": dilewati (chart " + (symPilih || "-") + " tidak ada)"); continue; }
-      const ab = "" + glob.a + glob.b;
+      if (!c || !simbolSah(c.sym)) { lewat.push(a.login); continue; }
       baris.push("@" + a.login + " " + c.sym + " " + ab + "0 buat " + glob.n + "." + glob.e);
-      ringkas.push(a.login + " " + c.sym + ": buat Hawk " + tipeGlob().map(t => ab + t).join(" ") + " TF " + NAMA_TF[glob.e] + " (yang sudah ada dilewati)");
+      kena.push(a.login);
     }
+    // Satu baris ringkasan untuk semua akun (popup konfirmasi Telegram maks. 256 karakter).
+    if (kena.length) ringkas.push("Buat " + DIVERSITY.find(x => x[0] === glob.n)[1] + " (Hawk " + tipeGlob().map(t => ab + t).join(" ") + ") TF " + NAMA_TF[glob.e]
+                                  + " di " + kena.length + " akun; yang sudah ada dilewati");
+    if (lewat.length) ringkas.push("Dilewati (chart " + (symPilih || "-") + " tidak ada): " + lewat.join(", "));
   }
   return { baris, ringkas };
 }
@@ -356,8 +360,10 @@ function pilihGlobal(mati) {
 
 // Popup Telegram hanya di dalam aplikasi Telegram (di browser biasa platform = "unknown" dan popup tidak pernah dijawab).
 const diTelegram = () => !!(tg && tg.platform && tg.platform !== "unknown");
-function alertTg(m) { if (diTelegram() && tg.isVersionAtLeast("6.2")) tg.showAlert(m); else alert(m); }
-function confirmTg(m, cb) { if (diTelegram() && tg.isVersionAtLeast("6.2")) tg.showConfirm(m.slice(0, 1000), cb); else cb(confirm(m)); }
+// Popup Telegram: teks maks. 256 karakter (lebih panjang = popup ditolak dan tombol seolah tidak bereaksi), jadi dipotong dengan "...".
+const potong256 = m => (m.length <= 256 ? m : m.slice(0, 252).replace(/\s+\S*$/, "") + " ...");
+function alertTg(m) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg.showAlert(potong256(m)); return; } catch (e) {} } alert(m); }
+function confirmTg(m, cb) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg.showConfirm(potong256(m), cb); return; } catch (e) {} } cb(confirm(m)); }
 
 // Kirim semua perubahan yang menunggu (+ aksi tambahan Reset / Tutup) lewat sendData; di luar tombol bot: perintah ditampilkan untuk disalin.
 function kirim(barisTambah, ringkasTambah, judul) {
