@@ -121,7 +121,7 @@ const pilihChart = {}, pilihHawk = {};
 const ubah = {};    // "login|simbol|Hawk|baris|kolom" -> teks yang diketik (belum dikirim)
 const tpBaru = {};  // "login|simbol" -> TP LS Kendali yang diketik
 // Pengaturan global (kartu TP): Diversity n = daftar tipe Hawk (digit, 0 = mati) yang dibuat HANYA di akun + chart terpilih dengan ab dan TF harga e.
-const glob = { n: 0, a: 3, b: 8, e: 1 };
+const glob = { n: 0, a: 3, b: 8, e: 1, semua: false };
 const DIVERSITY = [[0, "-"], [123, "F1-3"], [456, "H1-3"], [789, "S1-3"], [147, "F1H1S1"], [258, "F2H2S2"], [369, "F3H3S3"], [123456789, "Hawk1-9"]];
 const tipeGlob = () => String(glob.n).split("").map(Number);
 
@@ -308,31 +308,44 @@ function pasanganHawk(a, c, h, salah) {
   return pas.concat(akhir);
 }
 
-// Semua perubahan yang menunggu (semua akun / chart / Hawk) -> baris perintah, maks 6 pasang per baris.
-function semuaPerintah(salah) {
-  const baris = [], ringkas = [];
-  for (const a of D.akun) for (const c of a.chart) {
-    for (const h of c.hawk) {
-      const pas = pasanganHawk(a, c, h, salah);
-      for (let i = 0; i < pas.length; i += 6) baris.push("@" + a.login + " " + c.sym + " " + h.no + " " + pas.slice(i, i + 6).map(x => x[0] + " " + x[1]).join(" "));
-      if (pas.length) ringkas.push(a.login + " " + c.sym + " Hawk " + h.no + ": " + pas.map(x => x[0] + " " + x[1]).join(", "));
-    }
-    const tp = tpBaru[a.login + "|" + c.sym];
-    if (tp) {
-      const v = teksAngka(tp, 2);
-      if (v === null || +v >= 10000 || (+v > 0 && +v < 1)) salah.push("tp|" + a.login + "|" + c.sym);
-      else { baris.push("@" + a.login + " " + c.sym + " " + v); ringkas.push(a.login + " " + c.sym + ": TP LS Kendali " + v); }
-    }
+// Perubahan kotak satu Hawk -> baris perintah (maks 6 pasang per baris) dan ringkasannya.
+function perintahHawk(a, c, h, salah) {
+  const baris = [], ringkas = [], pas = pasanganHawk(a, c, h, salah);
+  for (let i = 0; i < pas.length; i += 6) baris.push("@" + a.login + " " + c.sym + " " + h.no + " " + pas.slice(i, i + 6).map(x => x[0] + " " + x[1]).join(" "));
+  if (pas.length) ringkas.push(a.login + " " + c.sym + " Hawk " + h.no + ": " + pas.map(x => x[0] + " " + x[1]).join(", "));
+  return { baris, ringkas };
+}
+// TP LS Kendali yang diketik untuk satu akun + chart.
+function perintahTP(a, c, salah) {
+  const tp = tpBaru[a.login + "|" + c.sym], baris = [], ringkas = [];
+  if (tp) {
+    const v = teksAngka(tp, 2);
+    if (v === null || +v >= 10000 || (+v > 0 && +v < 1)) salah.push("tp|" + a.login + "|" + c.sym);
+    else { baris.push("@" + a.login + " " + c.sym + " " + v); ringkas.push("Akun " + a.login + " " + c.sym + ": TP LS Kendali " + v); }
   }
-  // Pengaturan global: HANYA akun dan chart yang sedang dipilih ("@akun SIMBOL ab0 buat n.e", BuatHawkGlobal di EA); akun lain tidak pernah ikut.
-  if (glob.n > 0) {
-    const a = akunIni(), c = chartIni(a), ab = "" + glob.a + glob.b;
-    if (c && simbolSah(c.sym)) {
-      baris.push("@" + a.login + " " + c.sym + " " + ab + "0 buat " + glob.n + "." + glob.e);
-      ringkas.push("Akun " + a.login + " " + c.sym + " SAJA: buat " + DIVERSITY.find(x => x[0] === glob.n)[1] + " (Hawk " + tipeGlob().map(t => ab + t).join(" ") + ") TF "
-                   + NAMA_TF[glob.e] + "; yang sudah ada dilewati");
-    }
+  return { baris, ringkas };
+}
+// Kotak yang isinya tidak sah (merah) di semua akun / chart / Hawk.
+function semuaSalah() {
+  const salah = [];
+  for (const a of D.akun) for (const c of a.chart) { for (const h of c.hawk) pasanganHawk(a, c, h, salah); perintahTP(a, c, salah); }
+  return salah;
+}
+// Pengaturan global ("@akun SIMBOL ab0 buat n.e", BuatHawkGlobal di EA): akun terpilih saja, atau semua akun bila cakupan "Semua akun" dipilih
+// (akun dengan beberapa chart: simbol dasar sama dengan chart terpilih, mis. XAUUSD = XAUUSDm; tidak ada = dilewati).
+function perintahGlobal() {
+  const baris = [], ringkas = [], ab = "" + glob.a + glob.b, ai = akunIni(), ci = chartIni(ai);
+  if (!glob.n || !ci) return { baris, ringkas };
+  const dasar = s => String(s).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6), kena = [], lewat = [];
+  for (const a of glob.semua ? D.akun : [ai]) {
+    const c = a === ai ? ci : a.chart.length === 1 ? a.chart[0] : a.chart.find(x => x.sym === ci.sym) || a.chart.find(x => dasar(x.sym) === dasar(ci.sym));
+    if (!c || !simbolSah(c.sym)) { lewat.push(a.login); continue; }
+    baris.push("@" + a.login + " " + c.sym + " " + ab + "0 buat " + glob.n + "." + glob.e);
+    kena.push(a.login + " " + c.sym);
   }
+  const apa = "buat " + DIVERSITY.find(x => x[0] === glob.n)[1] + " (Hawk " + tipeGlob().map(t => ab + t).join(" ") + ") TF " + NAMA_TF[glob.e] + "; yang sudah ada dilewati";
+  if (kena.length) ringkas.push(glob.semua ? "SEMUA " + kena.length + " akun: " + apa : "Akun " + kena[0] + " SAJA: " + apa);
+  if (lewat.length) ringkas.push("Dilewati (chart " + ci.sym + " tidak ada): " + lewat.join(", "));
   return { baris, ringkas };
 }
 // Simbol yang bisa ditulis di perintah channel (harus diawali huruf, ASCII tanpa spasi dan "|").
@@ -348,7 +361,8 @@ function pilihGlobal(mati) {
     + sel("a", "Zona a", [1, 2, 3, 4, 5], v => v + " " + NAMA_A[v])
     + sel("b", "Teknik b", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], v => v + " " + NAMA_B[v])
     + sel("e", "TF", [1, 2, 3, 4, 5, 6, 7], v => NAMA_TF[v], v => v <= eMaksGlobal())
-    + '<span class="muted">&rarr; hanya akun <b>' + esc(akunIni().login) + "</b></span></div>";
+    + '<label class="glob"><span>Untuk</span><select data-cakupan="1"' + mati + (glob.semua ? ' class="ubah"' : "") + '><option value="0"' + (glob.semua ? "" : " selected") + ">Akun ini ("
+    + esc(akunIni().login) + ')</option><option value="1"' + (glob.semua ? " selected" : "") + ">Semua akun (" + D.akun.length + ")</option></select></label></div>";
 }
 
 // Popup Telegram hanya di dalam aplikasi Telegram (di browser biasa platform = "unknown" dan popup tidak pernah dijawab).
@@ -358,17 +372,16 @@ const potong256 = m => (m.length <= 256 ? m : m.slice(0, 252).replace(/\s+\S*$/,
 function alertTg(m) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg.showAlert(potong256(m)); return; } catch (e) {} } alert(m); }
 function confirmTg(m, cb) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg.showConfirm(potong256(m), cb); return; } catch (e) {} } cb(confirm(m)); }
 
-// Kirim semua perubahan yang menunggu (+ aksi tambahan Reset / Tutup) lewat sendData; di luar tombol bot: perintah ditampilkan untuk disalin.
-function kirim(barisTambah, ringkasTambah, judul) {
-  const salah = [], s = semuaPerintah(salah);
-  if (salah.length) { tampil(); alertTg("Ada kotak yang isinya tidak sah (merah). Perbaiki dulu."); return; }
-  const baris = s.baris.concat(barisTambah), ringkas = s.ringkas.concat(ringkasTambah);
-  if (!baris.length) { alertTg("Belum ada perubahan."); return; }
+// Kirim baris perintah yang sudah disusun (satu tombol = satu jenis perubahan) lewat sendData sesudah konfirmasi; salah = kotak merah yang ikut
+// tombol itu. Di luar tombol bot: perintah ditampilkan untuk disalin.
+function kirim(baris, ringkas, judul, salah, kosong) {
+  if (salah && salah.length) { tampil(); alertTg("Ada kotak yang isinya tidak sah (merah). Perbaiki dulu."); return; }
+  if (!baris.length) { alertTg(kosong || "Belum ada perubahan."); return; }
   const data = baris.join("\n");
   // EA menjalankan maks 9 baris per jenis (TP, ubah parameter, tutup) per kiriman.
   const jenis = { K: 0, P: 0, C: 0 };
   for (const b of baris) jenis[b.indexOf(" tutup ") > 0 ? "C" : b.split(" ").length === 3 ? "K" : "P"]++;
-  if (baris.length > 40 || jenis.K > 9 || jenis.P > 9 || jenis.C > 9 || new Blob([data]).size > 4000) { alertTg("Perubahan terlalu banyak untuk sekali kirim (maks 9 Hawk). Kirim sebagian dulu."); return; }
+  if (baris.length > 40 || jenis.K > 9 || jenis.P > 9 || jenis.C > 9 || new Blob([data]).size > 4000) { alertTg("Perintah terlalu banyak untuk sekali kirim (maks 9 akun / Hawk). Kirim sebagian dulu."); return; }
   confirmTg(judul + "\n\n" + ringkas.slice(0, 12).join("\n") + (ringkas.length > 12 ? "\n..." : ""), ok => {
     if (!ok) return;
     if (diTelegram()) {
@@ -401,8 +414,8 @@ const BANTUAN = "<details><summary>Arti kotak dan tombol</summary><ul>"
   + "<li>Baris 0: TF abhcEeXx . Loop (32781100.99 = Hawk 327, TF 1100, Loop 99) · pindah . sideways (0.1 = sideways on, 0.0 = off, 35981100.1 = pindah ke Hawk 359 TF 1100) · follow akun . level (58288.03 = ikut akun ...58288 dari L3, 0 = mati).</li>"
   + "<li>Pulldown a / b / e di samping nomor Hawk: ganti teknik zona a, teknik entry b, atau TF harga e; kotak pindah terisi otomatis (E, X, x mengikuti tipe Hawk, mis. Soldier3 e M5 = TF 4242) dan dikirim dengan OK. Ganti a/b = Hawk baru (posisi open diteruskan, tidak ditutup); pilihan abu-abu = Hawk tujuan sudah ada atau TF melewati MN1.</li>"
   + "<li>Baris 3: exitUSD . add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD . add-. Baris 5: emaA . emaB (100.50 = emaA 100, emaB 50); kotak pertama = tutupDini (10 aktif, 0 mati). Baris 7: eq &gt; (SL) dan eq &lt; (TP), dalam nilai akun (mis. 150000 dan 50000).</li>"
-  + "<li>Diversity / Zona a / Teknik b / TF (kartu TP): buat Hawk HANYA di akun dan chart yang sedang dipilih (nomornya tertulis di kartu TP dan di konfirmasi); akun lain tidak ikut. Ganti akun = Diversity kembali -. Diversity = tipe Hawk: F1-3 = Farmer1-3, H1-3 = Hunter1-3, S1-3 = Soldier1-3, F1H1S1 / F2H2S2 / F3H3S3 = nomor 1 / 2 / 3 dari tiap kelompok, Hawk1-9 = semua (mis. a 3, b 8, F1H1S1 = Hawk 381 384 387). TF = TF harga (E, X, x mengikuti tipe); Hawk yang sudah ada dilewati. - = mati. Dikirim dengan OK.</li>"
-  + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
+  + "<li>Diversity / Zona a / Teknik b / TF / Untuk (kartu TP): buat Hawk di akun yang sedang dipilih (Untuk = Akun ini) atau di semua akun dashboard (Untuk = Semua akun); dikirim dengan OK paling kanan dan dikonfirmasi dulu (Akun ... SAJA / SEMUA n akun). Ganti akun = Diversity kembali -. Diversity = tipe Hawk: F1-3 = Farmer1-3, H1-3 = Hunter1-3, S1-3 = Soldier1-3, F1H1S1 / F2H2S2 / F3H3S3 = nomor 1 / 2 / 3 dari tiap kelompok, Hawk1-9 = semua (mis. a 3, b 8, F1H1S1 = Hawk 381 384 387). TF = TF harga (E, X, x mengikuti tipe); Hawk yang sudah ada dilewati. - = mati.</li>"
+  + "<li>Tiga jenis OK, masing-masing hanya mengirim bagiannya: OK di kanan TP baru = TP LS Kendali akun ini; OK paling kanan kartu TP = Diversity; OK di kartu Hawk = kotak Hawk itu saja. Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
   + "<li>Layar lebar (iPad miring, laptop): semua akun dan semua Hawk tampil berjejer; klik kartu akun untuk melihat Hawk-nya.</li>"
   + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details>";
 
@@ -472,7 +485,7 @@ function kartuHawk(a, c, hi, lebar, salah, kunci, mati) {
     h += "</div>";
   });
   h += '<div class="aksi"><button class="merah kiri" data-tutup="' + hi + '"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
-     + '<button class="ghost" data-reset="' + hi + '"' + mati + ">Reset</button>" + (lebar ? "" : '<button id="ok"' + mati + ">OK</button>") + "</div>";
+     + '<button class="ghost" data-reset="' + hi + '"' + mati + ">Reset</button>" + '<button data-okhawk="' + hi + '"' + mati + ">OK</button></div>";
   return h + (lebar ? "" : BANTUAN) + "</div>";
 }
 
@@ -481,8 +494,7 @@ function tampil() {
   modeLebar = layarLebar();
   app.classList.toggle("lebar", modeLebar);
   if (!D.akun.length) { app.innerHTML = '<div class="err">Tidak ada akun di data ini.</div>'; return; }
-  const a = akunIni(), c = chartIni(a), salah = [], lebar = modeLebar;
-  semuaPerintah(salah);
+  const a = akunIni(), c = chartIni(a), salah = semuaSalah(), lebar = modeLebar;
   let h = '<div class="kepala"><div class="muted">Dashboard hawk' + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts)
         + " WIB · ketik /dash di bot untuk data terbaru</div>"
         + (bisaPenuh() ? '<button class="ghost kecil" id="penuh">' + (tg.isFullscreen ? "Keluar layar penuh" : "&#x26F6; Layar penuh") + "</button>" : "") + "</div>";
@@ -501,11 +513,10 @@ function tampil() {
   const kunci = !simbolSah(c.sym), mati = kunci ? " disabled" : "";
   if (kunci) h += '<div class="card err">Simbol ' + esc(c.sym) + " tidak bisa dipakai di perintah channel; chart ini hanya bisa dilihat.</div>";
   h += '<div class="card"><div class="muted">' + (lebar ? esc(a.login) + " · " : "") + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
-     + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span>'
-     + pilihGlobal(mati) + (lebar ? '<button class="kanan" id="ok"' + mati + ">OK</button>" : "") + "</div>"
+     + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><button id="oktp"' + mati + ">OK</button>"
+     + pilihGlobal(mati) + '<button class="kanan" id="ok"' + mati + ">OK</button></div>"
      + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 tampilkan LS Param · 7 hapus LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
-  if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK.</div>"
-                        + (lebar ? "" : '<div class="aksi"><button id="ok"' + mati + ">OK</button></div>");
+  if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK di sebelahnya, atau pakai Diversity.</div>";
   else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + '<div class="card">' + BANTUAN + "</div>";
   else h += kartuHawk(a, c, Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), false, salah, kunci, mati);
   app.innerHTML = h + '<div id="salin"></div>';
@@ -549,11 +560,25 @@ function pasang() {
       tampil();
     };
   });
+  document.querySelectorAll("select[data-cakupan]").forEach(s => { s.onchange = () => { glob.semua = s.value === "1"; tampil(); }; });
   const tp = document.getElementById("tp");
   if (tp) tp.oninput = () => { tpBaru[kTP] = tp.value.trim(); tp.className = tpBaru[kTP] ? "ubah" : ""; };
+  // OK di kanan TP baru: hanya TP LS Kendali akun + chart ini. OK paling kanan: hanya Diversity. OK kartu Hawk: hanya kotak Hawk itu.
+  const okTP = document.getElementById("oktp");
+  if (okTP) okTP.onclick = () => {
+    const salah = [], p = perintahTP(a, c, salah);
+    kirim(p.baris, p.ringkas, "Kirim TP LS Kendali?", salah, "Isi TP baru dulu.");
+  };
   const ok = document.getElementById("ok");
-  if (ok) ok.onclick = () => kirim([], [], "Kirim perubahan ke EA?");
-  // Reset / Tutup per kartu Hawk (satu kartu di layar sempit, semua kartu di layar lebar).
+  if (ok) ok.onclick = () => {
+    const p = perintahGlobal();
+    kirim(p.baris, p.ringkas, glob.semua ? "Buat Hawk di SEMUA akun?" : "Buat Hawk di akun ini?", [], "Pilih Diversity dulu (OK ini hanya untuk Diversity).");
+  };
+  document.querySelectorAll("[data-okhawk]").forEach(b => {
+    const w = c.hawk[+b.dataset.okhawk];
+    b.onclick = () => { const salah = [], p = perintahHawk(a, c, w, salah); kirim(p.baris, p.ringkas, "Kirim perubahan Hawk " + w.no + "?", salah); };
+  });
+  // Reset / Tutup per kartu Hawk (satu kartu di layar sempit, semua kartu di layar lebar): hanya aksi itu.
   document.querySelectorAll("[data-reset]").forEach(b => {
     const w = c.hawk[+b.dataset.reset];
     b.onclick = () => {
