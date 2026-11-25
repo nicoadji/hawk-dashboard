@@ -52,9 +52,13 @@ button.kecil { padding: 4px 10px; font-size: 12px; font-weight: 500; flex: 0 0 a
 .badge { font-size: 11px; border-radius: 6px; padding: 1px 6px; margin-left: 6px; background: var(--bg); color: var(--hint); vertical-align: middle; }
 .row-tp { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .row-tp input { width: 130px; flex: 0 0 130px; }
-.hawkhead { display: flex; align-items: center; gap: 8px; }
+.hawkhead { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+.abe { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
+.abe span { color: var(--hint); font-size: 12px; }
+select { background: var(--bg); color: var(--tx); border: 1px solid #4a4a4f; border-radius: 6px; padding: 4px 2px; font-size: 13px; }
+select.ubah { border-color: var(--edit); box-shadow: 0 0 0 1px var(--edit) inset; }
 .hawkhead .tipe { font-size: 26px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
-.hawkhead .konf { font-size: 20px; font-weight: 600; text-decoration: underline; text-underline-offset: 5px; flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.hawkhead .konf { font-size: 20px; font-weight: 600; text-decoration: underline; text-underline-offset: 5px; flex: 1 0 auto; font-variant-numeric: tabular-nums; }
 .nav { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
 .nav button { width: 34px; height: 32px; padding: 0; font-size: 14px; }
 .sub { margin: 2px 0 8px; }
@@ -362,6 +366,7 @@ const bisaPenuh = () => diTelegram() && tg.isVersionAtLeast("8.0") && typeof tg.
 const BANTUAN = "<details><summary>Arti kotak dan tombol</summary><ul>"
   + "<li>Baris 0 = LS konfigurasi, 1-7 = LS Param 01-07. Keterangan di atas kotak: &quot;A . B&quot; = A sebelum koma, B sesudah koma. SL tanpa 9000 di depan. Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
   + "<li>Baris 0: TF abhcEeXx . Loop (32781100.99 = Hawk 327, TF 1100, Loop 99) · pindah . sideways (0.1 = sideways on, 0.0 = off, 35981100.1 = pindah ke Hawk 359 TF 1100) · follow akun . level (58288.03 = ikut akun ...58288 dari L3, 0 = mati).</li>"
+  + "<li>Pulldown a / b / e di samping nomor Hawk: ganti teknik zona a, teknik entry b, atau TF harga e; kotak pindah terisi otomatis (E, X, x mengikuti tipe Hawk, mis. Soldier3 e M5 = TF 4242) dan dikirim dengan OK. Ganti a/b = Hawk baru (posisi open diteruskan, tidak ditutup); pilihan abu-abu = Hawk tujuan sudah ada atau TF melewati MN1.</li>"
   + "<li>Baris 3: exitUSD . add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD . add-. Baris 5: emaA . emaB (100.50 = emaA 100, emaB 50); kotak pertama = tutupDini (10 aktif, 0 mati). Baris 7: eq &gt; (SL) dan eq &lt; (TP), dalam nilai akun (mis. 150000 dan 50000).</li>"
   + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
   + "<li>Layar lebar (iPad miring, laptop): semua akun dan semua Hawk tampil berjejer; klik kartu akun untuk melihat Hawk-nya.</li>"
@@ -383,12 +388,42 @@ function namaTipe(t) {
   return n && /^[FHSM]\d$/.test(t) ? n + t.charAt(1) : t;
 }
 
+// Pulldown a / b / e di samping nomor konfigurasi (Hawk 3 digit abh): mengisi kotak pindah (SL baris 0) dengan abhcEeXx baru, dikirim dengan OK.
+// c dan h tetap; E, X, x mengikuti ciri tipe Hawk seperti TF awal EA (PrasetTF): E = e + 0/1/2 untuk tipe 1·4·7 / 2·5·8 / 3·6·9, +1 untuk paket RSI
+// (b 5/6), X = E, x = e (mis. tipe 9, e M5 = 4242). Manual0: E = e (+1 RSI).
+const NAMA_A = ["", "XAO", "AO", "EMA", "SAR", "RSI"];
+const NAMA_B = ["XAO", "Fr", "AO", "EMA100", "SAR", "RSI", "RSIbrk", "TL", "revAO", "AOmix"];
+const NAMA_TF = ["", "M1", "M5", "M30", "H4", "D1", "W1", "MN1"];
+const bisaAbe = w => /^\d{3}$/.test(w.no) && /^\d{8}$/.test(w.harga.split(".")[0]);
+function kodeAbe(w, a, b, e, c) {
+  const tipe = +w.no.charAt(2), E = e + (tipe >= 1 ? (tipe - 1) % 3 : 0) + (b === 5 || b === 6 ? 1 : 0);
+  return E > 7 ? null : "" + a + b + tipe + c + E + e + E + e;
+}
+// Konfigurasi yang dituju sekarang: isi kotak pindah bila berupa abhcEeXx (pindah belum dikirim), selain itu harga LS konfigurasi.
+function abeKini(a, c, w) {
+  const key = kunciSel(a, c, w, 0, 1), awal = nilaiAwal(w, BARIS[0].sel[1]);
+  const [bul, pec = ""] = String(key in ubah ? ubah[key] : awal).replace(",", ".").split(".");
+  return { key, sw: /^\d$/.test(pec.charAt(0)) ? pec.charAt(0) : awal.split(".")[1] || "1",
+           d: (/^\d{8}$/.test(bul) ? bul : w.harga.split(".")[0]).split("").map(Number) };
+}
+function pilihAbe(a, c, w, hi) {
+  const k = abeKini(a, c, w), d = k.d, h0 = w.harga.split(".")[0], tipe = w.no.charAt(2);
+  const ada = new Set(c.hawk.filter(x => x !== w).map(x => x.no));
+  const sel = (jenis, nilai, daftar, nama, sah, beda) => "<span>" + jenis + '</span><select data-abe="' + hi + '" data-jenis="' + jenis + '"' + (beda ? ' class="ubah"' : "") + ">"
+    + daftar.map(v => '<option value="' + v + '"' + (v === nilai ? " selected" : v !== nilai && !sah(v) ? " disabled" : "") + ">" + nama(v) + "</option>").join("") + "</select>";
+  return '<div class="abe">'
+    + sel("a", d[0], [1, 2, 3, 4, 5], v => v + " " + NAMA_A[v], v => !ada.has("" + v + d[1] + tipe) && kodeAbe(w, v, d[1], d[5], d[3]), d[0] !== +h0[0])
+    + sel("b", d[1], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], v => v + " " + NAMA_B[v], v => !ada.has("" + d[0] + v + tipe) && kodeAbe(w, d[0], v, d[5], d[3]), d[1] !== +h0[1])
+    + sel("e", d[5], [1, 2, 3, 4, 5, 6, 7], v => NAMA_TF[v], v => kodeAbe(w, d[0], d[1], v, d[3]), d[5] !== +h0[5]) + "</div>";
+}
+
 // Kartu satu Hawk (indeks hi di chart c). Layar sempit: dengan navigasi ◀ ▶, tombol OK, dan bantuan; layar lebar: tanpa itu (OK di kartu TP).
 function kartuHawk(a, c, hi, lebar, salah, kunci, mati) {
   const w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
   let h = '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(namaTipe(w.tipe)) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>";
   if (!lebar) h += '<div class="nav"><button class="ghost" data-hawk="-1"' + satu + '>&#9664;</button><span class="muted">' + (hi + 1) + "/" + c.hawk.length
                  + '</span><button class="ghost" data-hawk="1"' + satu + ">&#9654;</button></div>";
+  if (konfAda && !kunci && bisaAbe(w)) h += pilihAbe(a, c, w, hi);
   h += "</div>" + '<div class="muted sub">Hawk ' + esc(w.no) + " · " + esc(w.ab) + " · "
      + (w.npos ? w.npos + " posisi · " + angka(w.lot, 2) + " lot · L" + w.lvl + ' · <span class="' + (w.profit >= 0 ? "pos" : "neg") + '">' + tanda(w.profit) + "</span>" : "tanpa posisi")
      + (w.npnd ? " · " + w.npnd + " pending" : "") + (!lebar && c.hawk.length > 1 ? " · " + c.hawk.map(x => (adaUbahHawk(a, c, x) ? "*" : "") + x.no).join(" ") : "") + "</div>";
@@ -458,6 +493,18 @@ function pasang() {
     i.oninput = () => {
       if (i.value.trim() === i.dataset.awal) delete ubah[i.dataset.key]; else ubah[i.dataset.key] = i.value.trim();
       i.className = i.dataset.key in ubah ? "ubah" : "";
+    };
+  });
+  document.querySelectorAll("select[data-abe]").forEach(s => {
+    s.onchange = () => {
+      const w = c.hawk[+s.dataset.abe], k = abeKini(a, c, w), h0 = w.harga.split(".")[0];
+      const v = {}; document.querySelectorAll('select[data-abe="' + s.dataset.abe + '"]').forEach(x => { v[x.dataset.jenis] = +x.value; });
+      const kode = kodeAbe(w, v.a, v.b, v.e, k.d[3]), swAwal = nilaiAwal(w, BARIS[0].sel[1]).split(".")[1] || "1";
+      if (!kode) { alertTg("TF zona untuk pilihan ini melewati MN1; pilih TF lebih kecil."); tampil(); return; }
+      // Kembali ke a / b / e semula = tidak ada pindah (sideways yang sudah diubah tetap dikirim).
+      if (v.a === +h0[0] && v.b === +h0[1] && v.e === +h0[5]) { if (k.sw === swAwal) delete ubah[k.key]; else ubah[k.key] = "0." + k.sw; }
+      else ubah[k.key] = kode + "." + k.sw;
+      tampil();
     };
   });
   const tp = document.getElementById("tp");
