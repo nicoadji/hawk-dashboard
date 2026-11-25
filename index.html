@@ -348,7 +348,7 @@ function pilihGlobal(mati) {
     + sel("a", "Zona a", [1, 2, 3, 4, 5], v => v + " " + NAMA_A[v])
     + sel("b", "Teknik b", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], v => v + " " + NAMA_B[v])
     + sel("e", "TF", [1, 2, 3, 4, 5, 6, 7], v => NAMA_TF[v], v => v <= eMaksGlobal())
-    + (glob.n > 0 ? '<span class="muted">&rarr; hanya akun <b>' + esc(akunIni().login) + "</b></span>" : "") + "</div>";
+    + '<span class="muted">&rarr; hanya akun <b>' + esc(akunIni().login) + "</b></span></div>";
 }
 
 // Popup Telegram hanya di dalam aplikasi Telegram (di browser biasa platform = "unknown" dan popup tidak pernah dijawab).
