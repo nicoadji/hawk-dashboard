@@ -502,7 +502,7 @@ function tampil() {
   h += '<div class="card"><div class="muted">' + (lebar ? esc(a.login) + " · " : "") + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
      + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span>'
      + pilihGlobal(mati) + (lebar ? '<button class="kanan" id="ok"' + mati + ">OK</button>" : "") + "</div>"
-     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 bid · 7 eq · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
+     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 tampilkan LS Param · 7 hapus LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
   if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK.</div>"
                         + (lebar ? "" : '<div class="aksi"><button id="ok"' + mati + ">OK</button></div>");
   else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + '<div class="card">' + BANTUAN + "</div>";
