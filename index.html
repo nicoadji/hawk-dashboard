@@ -53,7 +53,7 @@ button.kecil { padding: 4px 10px; font-size: 12px; font-weight: 500; flex: 0 0 a
 .row-tp { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .row-tp input { width: 130px; flex: 0 0 130px; }
 .hawkhead { display: flex; align-items: center; gap: 8px; }
-.hawkhead .tipe { font-size: 26px; font-weight: 700; letter-spacing: 1px; }
+.hawkhead .tipe { font-size: 26px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
 .hawkhead .konf { font-size: 20px; font-weight: 600; text-decoration: underline; text-underline-offset: 5px; flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
 .nav { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
 .nav button { width: 34px; height: 32px; padding: 0; font-size: 14px; }
@@ -377,10 +377,16 @@ function kartuAkun(x, i, on) {
      + (x.ml > 0 ? uang(x.ml) + "%" : "-") + "</b></div><div>Posisi <b>" + x.npos + "</b> · " + angka(x.lot, 2) + ' lot</div><div class="muted">data ' + jamWIB(x.ts) + " WIB</div></div></div>";
 }
 
+// Kode tipe dari EA (F1, H2, S3, M0) ditampilkan nama lengkap: Farmer1, Hunter2, Soldier3, Manual0.
+function namaTipe(t) {
+  const n = { F: "Farmer", H: "Hunter", S: "Soldier", M: "Manual" }[String(t).charAt(0)];
+  return n && /^[FHSM]\d$/.test(t) ? n + t.charAt(1) : t;
+}
+
 // Kartu satu Hawk (indeks hi di chart c). Layar sempit: dengan navigasi ◀ ▶, tombol OK, dan bantuan; layar lebar: tanpa itu (OK di kartu TP).
 function kartuHawk(a, c, hi, lebar, salah, kunci, mati) {
   const w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
-  let h = '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(w.tipe) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>";
+  let h = '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(namaTipe(w.tipe)) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>";
   if (!lebar) h += '<div class="nav"><button class="ghost" data-hawk="-1"' + satu + '>&#9664;</button><span class="muted">' + (hi + 1) + "/" + c.hawk.length
                  + '</span><button class="ghost" data-hawk="1"' + satu + ">&#9654;</button></div>";
   h += "</div>" + '<div class="muted sub">Hawk ' + esc(w.no) + " · " + esc(w.ab) + " · "
