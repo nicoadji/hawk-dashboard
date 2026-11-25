@@ -25,13 +25,25 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--tx); font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-body { padding: 10px 10px calc(14px + env(safe-area-inset-bottom)); }
+/* Layar penuh Telegram (Bot API 8.0+): tombol Telegram menutupi bagian atas, jadi isi digeser sebesar area aman (0 di luar layar penuh). */
+body { padding: calc(10px + var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)) 10px calc(14px + env(safe-area-inset-bottom)); }
 main { max-width: 720px; margin: 0 auto; }
+/* Layar lebar (iPad miring, laptop): ringkasan akun dan kartu Hawk berjejer; jumlah kolom mengikuti lebar jendela. */
+main.lebar { max-width: 1600px; }
+.akungrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin: 8px 0; }
+.akungrid .card { margin: 0; cursor: pointer; }
+.card.akun.on { box-shadow: 0 0 0 2px var(--btn) inset; }
+.hawkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px 10px; align-items: start; }
+.hawkgrid .card { margin: 0; }
+.kepala { display: flex; align-items: center; gap: 8px; }
+.kepala .muted { flex: 1; min-width: 0; }
+button.kecil { padding: 4px 10px; font-size: 12px; font-weight: 500; flex: 0 0 auto; }
+.row-tp .kanan { margin-left: auto; }
 .muted { color: var(--hint); font-size: 12px; }
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
 .tab { flex: 0 0 auto; border: 1px solid var(--bg2); background: var(--bg2); color: var(--tx); border-radius: 16px; padding: 6px 12px; font-size: 13px; font-weight: 500; }
 .tab.on { background: var(--btn); color: var(--btntx); border-color: var(--btn); }
-.tab .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--edit); margin-left: 5px; vertical-align: middle; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--edit); margin-left: 5px; vertical-align: middle; }
 .card { background: var(--bg2); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
 .akun h2 { margin: 0 0 2px; font-size: 16px; }
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 12px; font-size: 13px; margin-top: 6px; }
@@ -76,10 +88,10 @@ pre { white-space: pre-wrap; word-break: break-all; background: var(--bg); paddi
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 
-// Parameter per Hawk: urutan 18 bidang W sesudah TP LS konfigurasi (DashBarisHawk di hawkKendali.mqh).
+// Parameter per Hawk: urutan 21 bidang W sesudah TP LS konfigurasi (DashBarisHawk di hawkKendali.mqh).
 const P = { MM: 0, lot: 1, maxLevel: 2, marginLev: 3, xLot: 4, useTR: 5, exitUSD: 6, addP: 7, exitPct: 8, useSL: 9, lossUSD: 10, addM: 11,
-            lossPct: 12, pips: 13, emaA: 14, emaB: 15, bidP: 16, bidM: 17 };
-// Baris dashboard = nomor LS: 0 = LS konfigurasi, 1-6 = LS Param 01-06 (06 = bid, dulu 08). Tiga kotak Price / SL / TP; cap = keterangan tepat di
+            lossPct: 12, pips: 13, emaA: 14, emaB: 15, bidP: 16, bidM: 17, tutupDini: 18, eqP: 19, eqM: 20 };
+// Baris dashboard = nomor LS: 0 = LS konfigurasi, 1-7 = LS Param 01-07 (06 = bid, dulu 08; 07 = equity). Tiga kotak Price / SL / TP; cap = keterangan tepat di
 // atas kotak ("sebelum koma . sesudah koma" bila satu kotak berisi dua nilai).
 const BARIS = [
   { no: "0", sel: [{ konf: "harga", cap: "TF abhcEeXx . Loop" }, { konf: "sl", cap: "pindah . sideways" }, { konf: "tp", cap: "follow akun . level" }] },
@@ -87,13 +99,14 @@ const BARIS = [
   { no: "2", sel: [{ k: "maxLevel", bulat: true, cap: "maxLevel" }, { k: "marginLev", cap: "marginLev" }, { k: "xLot", cap: "xLot" }] },
   { no: "3", sel: [{ k: "useTR", bulat: true, cap: "useTR 0/1" }, { gabung: ["exitUSD", "addP"], cap: "exitUSD . add+" }, { k: "exitPct", cap: "exit %" }] },
   { no: "4", sel: [{ k: "useSL", bulat: true, cap: "useSL 0/1/2" }, { gabung: ["lossUSD", "addM"], cap: "lossUSD . add-" }, { k: "lossPct", cap: "loss %" }] },
-  { no: "5", sel: [null, { k: "pips", cap: "pips" }, { gabung: ["emaA", "emaB"], cap: "emaA . emaB" }] },
+  { no: "5", sel: [{ k: "tutupDini", bulat: true, cap: "tutupDini 0/10" }, { k: "pips", cap: "pips" }, { gabung: ["emaA", "emaB"], cap: "emaA . emaB" }] },
   { no: "6", sel: [null, { k: "bidP", bid: true, cap: "exit bid+" }, { k: "bidM", bid: true, cap: "exit bid-" }] },
+  { no: "7", sel: [null, { k: "eqP", cap: "eq > (SL)" }, { k: "eqM", cap: "eq < (TP)" }] },
 ];
 // Nama parameter di perintah channel (TgNamaParam di hawkTelegram.mqh).
 const NAMA = { MM: "MM", lot: "lot", maxLevel: "maxLevel", marginLev: "marginLev", xLot: "xLot", useTR: "useTR", exitUSD: "exitUSD", addP: "add+",
                exitPct: "exitPct", useSL: "useSL", lossUSD: "lossUSD", addM: "add-", lossPct: "lossPct", pips: "pips", emaA: "emaA", emaB: "emaB",
-               bidP: "exitBid+", bidM: "exitBid-" };
+               bidP: "exitBid+", bidM: "exitBid-", tutupDini: "tutupDini", eqP: "eq+", eqM: "eq-" };
 
 let D = null;
 let pilihAkun = 0;
@@ -209,8 +222,11 @@ function urai(teks) {
       let c = akun[f[1]].chart.find(x => x.sym === f[2]);
       if (!c) { c = { sym: f[2], digit: 5, tp: "0", hawk: [] }; akun[f[1]].chart.push(c); }
       if (c.hawk.some(x => x.no === f[3])) continue;
-      c.hawk.push({ no: f[3], tipe: f[4], ab: f[5], harga: f[6], sl: f[7], tp: f[8], p: f.slice(9, 27),
-                    npos: +f[27], lot: +f[28], profit: +f[29], lvl: +f[30], npnd: +f[31] });
+      // 21 parameter sejak tutupDini dan LS 07 (eq+/eq-); EA lama mengirim 18 (tiga terakhir dianggap 0).
+      const np = f.length >= 35 ? 21 : 18, p = f.slice(9, 9 + np);
+      while (p.length < 21) p.push("0");
+      c.hawk.push({ no: f[3], tipe: f[4], ab: f[5], harga: f[6], sl: f[7], tp: f[8], p,
+                    npos: +f[9 + np], lot: +f[10 + np], profit: +f[11 + np], lvl: +f[12 + np], npnd: +f[13 + np] });
     }
   }
   return d;
@@ -336,21 +352,72 @@ const adaUbahAkun = a => Object.keys(ubah).some(k => k.startsWith(a.login + "|")
 const akunIni = () => D.akun[Math.min(pilihAkun, D.akun.length - 1)];
 const chartIni = a => a.chart[Math.min(pilihChart[a.login] || 0, Math.max(a.chart.length - 1, 0))];
 
+// Layar lebar (iPad miring, laptop): ringkasan semua akun berjejer dan semua Hawk chart terpilih berjejer. Ditentukan dari lebar jendela, jadi berubah
+// otomatis saat layar diputar, jendela Telegram diperbesar, atau masuk layar penuh.
+const LEBAR_MIN = 900;
+const layarLebar = () => window.innerWidth >= LEBAR_MIN;
+let modeLebar = null;
+const bisaPenuh = () => diTelegram() && tg.isVersionAtLeast("8.0") && typeof tg.requestFullscreen === "function";
+
+const BANTUAN = "<details><summary>Arti kotak dan tombol</summary><ul>"
+  + "<li>Baris 0 = LS konfigurasi, 1-7 = LS Param 01-07. Keterangan di atas kotak: &quot;A . B&quot; = A sebelum koma, B sesudah koma. SL tanpa 9000 di depan. Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
+  + "<li>Baris 0: TF abhcEeXx . Loop (32781100.99 = Hawk 327, TF 1100, Loop 99) · pindah . sideways (0.1 = sideways on, 0.0 = off, 35981100.1 = pindah ke Hawk 359 TF 1100) · follow akun . level (58288.03 = ikut akun ...58288 dari L3, 0 = mati).</li>"
+  + "<li>Baris 3: exitUSD . add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD . add-. Baris 5: emaA . emaB (100.50 = emaA 100, emaB 50); kotak pertama = tutupDini (10 aktif, 0 mati). Baris 7: eq &gt; (SL) dan eq &lt; (TP), dalam nilai akun (mis. 150000 dan 50000).</li>"
+  + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
+  + "<li>Layar lebar (iPad miring, laptop): semua akun dan semua Hawk tampil berjejer; klik kartu akun untuk melihat Hawk-nya.</li>"
+  + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details>";
+
+// Kartu ringkasan akun. i >= 0 = kartu yang bisa diklik di layar lebar (on = akun terpilih).
+function kartuAkun(x, i, on) {
+  return '<div class="card akun' + (on ? " on" : "") + '"' + (i >= 0 ? ' data-akun="' + i + '"' : "") + "><h2>" + esc(x.login) + (x.nama ? " · " + esc(x.nama) : "")
+     + '<span class="badge">' + (x.demo ? "DEMO" : "REAL") + "</span>" + (i >= 0 && adaUbahAkun(x) ? '<span class="dot"></span>' : "") + "</h2>"
+     + '<div class="muted">' + esc(x.broker) + '</div><div class="grid">'
+     + "<div>Balance <b>" + uang(x.bal) + " " + esc(x.cur) + "</b></div><div>Equity <b>" + uang(x.eq) + "</b></div>"
+     + '<div>Floating <b class="' + (x.fl >= 0 ? "pos" : "neg") + '">' + tanda(x.fl) + '</b></div><div>Margin level <b class="' + (x.ml > 0 && x.ml < 300 ? "neg" : "") + '">'
+     + (x.ml > 0 ? uang(x.ml) + "%" : "-") + "</b></div><div>Posisi <b>" + x.npos + "</b> · " + angka(x.lot, 2) + ' lot</div><div class="muted">data ' + jamWIB(x.ts) + " WIB</div></div></div>";
+}
+
+// Kartu satu Hawk (indeks hi di chart c). Layar sempit: dengan navigasi ◀ ▶, tombol OK, dan bantuan; layar lebar: tanpa itu (OK di kartu TP).
+function kartuHawk(a, c, hi, lebar, salah, kunci, mati) {
+  const w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
+  let h = '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(w.tipe) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>";
+  if (!lebar) h += '<div class="nav"><button class="ghost" data-hawk="-1"' + satu + '>&#9664;</button><span class="muted">' + (hi + 1) + "/" + c.hawk.length
+                 + '</span><button class="ghost" data-hawk="1"' + satu + ">&#9654;</button></div>";
+  h += "</div>" + '<div class="muted sub">Hawk ' + esc(w.no) + " · " + esc(w.ab) + " · "
+     + (w.npos ? w.npos + " posisi · " + angka(w.lot, 2) + " lot · L" + w.lvl + ' · <span class="' + (w.profit >= 0 ? "pos" : "neg") + '">' + tanda(w.profit) + "</span>" : "tanpa posisi")
+     + (w.npnd ? " · " + w.npnd + " pending" : "") + (!lebar && c.hawk.length > 1 ? " · " + c.hawk.map(x => (adaUbahHawk(a, c, x) ? "*" : "") + x.no).join(" ") : "") + "</div>";
+  BARIS.forEach((r, ri) => {
+    h += '<div class="baris"><div class="no">' + r.no + "</div>" + r.sel.map(sel => '<div class="cap">' + (sel ? esc(sel.cap) : "") + "</div>").join("");
+    r.sel.forEach((sel, ki) => {
+      const key = kunciSel(a, c, w, ri, ki), awal = nilaiAwal(w, sel, c.digit);
+      if (!sel || (sel.konf && !konfAda) || kunci) { h += '<input disabled value="' + (sel && kunci && !(sel.konf && !konfAda) ? esc(awal) : "-") + '">'; return; }
+      const cls = salah.indexOf(key) >= 0 ? "salah" : key in ubah ? "ubah" : "";
+      h += '<input inputmode="decimal" data-key="' + esc(key) + '" data-awal="' + esc(awal) + '" class="' + cls + '" value="' + esc(key in ubah ? ubah[key] : awal) + '">';
+    });
+    h += "</div>";
+  });
+  h += '<div class="aksi"><button class="merah kiri" data-tutup="' + hi + '"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
+     + '<button class="ghost" data-reset="' + hi + '"' + mati + ">Reset</button>" + (lebar ? "" : '<button id="ok"' + mati + ">OK</button>") + "</div>";
+  return h + (lebar ? "" : BANTUAN) + "</div>";
+}
+
 function tampil() {
   const app = document.getElementById("app");
+  modeLebar = layarLebar();
+  app.classList.toggle("lebar", modeLebar);
   if (!D.akun.length) { app.innerHTML = '<div class="err">Tidak ada akun di data ini.</div>'; return; }
-  const a = akunIni(), c = chartIni(a), salah = [];
+  const a = akunIni(), c = chartIni(a), salah = [], lebar = modeLebar;
   semuaPerintah(salah);
-  let h = '<div class="muted">Dashboard hawk' + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts)
-        + " WIB · ketik /dash di bot untuk data terbaru</div>";
-  if (D.akun.length > 1)
-    h += '<div class="tabs">' + D.akun.map((x, i) => '<button class="tab' + (x === a ? " on" : "") + '" data-akun="' + i + '">' + esc(x.login)
-         + (adaUbahAkun(x) ? '<span class="dot"></span>' : "") + "</button>").join("") + "</div>";
-  h += '<div class="card akun"><h2>' + esc(a.login) + (a.nama ? " · " + esc(a.nama) : "") + '<span class="badge">' + (a.demo ? "DEMO" : "REAL") + "</span></h2>"
-     + '<div class="muted">' + esc(a.broker) + '</div><div class="grid">'
-     + "<div>Balance <b>" + uang(a.bal) + " " + esc(a.cur) + "</b></div><div>Equity <b>" + uang(a.eq) + "</b></div>"
-     + '<div>Floating <b class="' + (a.fl >= 0 ? "pos" : "neg") + '">' + tanda(a.fl) + '</b></div><div>Margin level <b class="' + (a.ml > 0 && a.ml < 300 ? "neg" : "") + '">'
-     + (a.ml > 0 ? uang(a.ml) + "%" : "-") + "</b></div><div>Posisi <b>" + a.npos + "</b> · " + angka(a.lot, 2) + ' lot</div><div class="muted">data ' + jamWIB(a.ts) + " WIB</div></div></div>";
+  let h = '<div class="kepala"><div class="muted">Dashboard hawk' + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts)
+        + " WIB · ketik /dash di bot untuk data terbaru</div>"
+        + (bisaPenuh() ? '<button class="ghost kecil" id="penuh">' + (tg.isFullscreen ? "Keluar layar penuh" : "&#x26F6; Layar penuh") + "</button>" : "") + "</div>";
+  if (lebar) h += '<div class="akungrid">' + D.akun.map((x, i) => kartuAkun(x, D.akun.length > 1 ? i : -1, D.akun.length > 1 && x === a)).join("") + "</div>";
+  else {
+    if (D.akun.length > 1)
+      h += '<div class="tabs">' + D.akun.map((x, i) => '<button class="tab' + (x === a ? " on" : "") + '" data-akun="' + i + '">' + esc(x.login)
+           + (adaUbahAkun(x) ? '<span class="dot"></span>' : "") + "</button>").join("") + "</div>";
+    h += kartuAkun(a, -1, false);
+  }
   if (!c) { app.innerHTML = h + '<div class="card muted">Akun ini belum punya chart hawk aktif.</div><div id="salin"></div>'; pasang(); return; }
   if (a.chart.length > 1)
     h += '<div class="tabs">' + a.chart.map((x, i) => '<button class="tab' + (x === c ? " on" : "") + '" data-chart="' + i + '">' + esc(x.sym) + "</button>").join("") + "</div>";
@@ -358,38 +425,14 @@ function tampil() {
   // Simbol yang tidak bisa ditulis di perintah channel (harus diawali huruf, ASCII tanpa spasi dan "|"): chart ini hanya bisa dilihat.
   const kunci = !/^[A-Za-z][\x21-\x7b\x7d\x7e]{0,39}$/.test(c.sym), mati = kunci ? " disabled" : "";
   if (kunci) h += '<div class="card err">Simbol ' + esc(c.sym) + " tidak bisa dipakai di perintah channel; chart ini hanya bisa dilihat.</div>";
-  h += '<div class="card"><div class="muted">' + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
-     + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span></div>'
-     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6/7 LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
+  h += '<div class="card"><div class="muted">' + (lebar ? esc(a.login) + " · " : "") + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>"
+     + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><span class="muted">dikirim dengan OK</span>'
+     + (lebar ? '<button class="kanan" id="ok"' + mati + ">OK</button>" : "") + "</div>"
+     + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 bid · 7 eq · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · 9999 rem · 0 kosongkan</div></div>';
   if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + ". Buat lewat TP LS Kendali (mis. 327) lalu tekan OK.</div>"
-                        + '<div class="aksi"><button id="ok"' + mati + ">OK</button></div>";
-  else {
-    const hi = Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), w = c.hawk[hi], konfAda = w.harga !== "-", satu = c.hawk.length < 2 ? " disabled" : "";
-    h += '<div class="card"><div class="hawkhead"><div class="tipe">' + esc(w.tipe) + '</div><div class="konf">' + esc(konfAda ? w.harga.split(".")[0] : w.no + " berhenti") + "</div>"
-       + '<div class="nav"><button class="ghost" data-hawk="-1"' + satu + '>&#9664;</button><span class="muted">' + (hi + 1) + "/" + c.hawk.length
-       + '</span><button class="ghost" data-hawk="1"' + satu + ">&#9654;</button></div></div>"
-       + '<div class="muted sub">Hawk ' + esc(w.no) + " · " + esc(w.ab) + " · "
-       + (w.npos ? w.npos + " posisi · " + angka(w.lot, 2) + " lot · L" + w.lvl + ' · <span class="' + (w.profit >= 0 ? "pos" : "neg") + '">' + tanda(w.profit) + "</span>" : "tanpa posisi")
-       + (w.npnd ? " · " + w.npnd + " pending" : "") + (c.hawk.length > 1 ? " · " + c.hawk.map(x => (adaUbahHawk(a, c, x) ? "*" : "") + x.no).join(" ") : "") + "</div>";
-    BARIS.forEach((r, ri) => {
-      h += '<div class="baris"><div class="no">' + r.no + "</div>" + r.sel.map(sel => '<div class="cap">' + (sel ? esc(sel.cap) : "") + "</div>").join("");
-      r.sel.forEach((sel, ki) => {
-        const key = kunciSel(a, c, w, ri, ki), awal = nilaiAwal(w, sel, c.digit);
-        if (!sel || (sel.konf && !konfAda) || kunci) { h += '<input disabled value="' + (sel && kunci && !(sel.konf && !konfAda) ? esc(awal) : "-") + '">'; return; }
-        const cls = salah.indexOf(key) >= 0 ? "salah" : key in ubah ? "ubah" : "";
-        h += '<input inputmode="decimal" data-key="' + esc(key) + '" data-awal="' + esc(awal) + '" class="' + cls + '" value="' + esc(key in ubah ? ubah[key] : awal) + '">';
-      });
-      h += "</div>";
-    });
-    h += '<div class="aksi"><button class="merah kiri" id="tutup"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
-       + '<button class="ghost" id="reset"' + mati + ">Reset</button><button id=\"ok\"" + mati + ">OK</button></div>"
-       + "<details><summary>Arti kotak dan tombol</summary><ul>"
-       + "<li>Baris 0 = LS konfigurasi, 1-6 = LS Param 01-06. Keterangan di atas kotak: &quot;A . B&quot; = A sebelum koma, B sesudah koma. SL tanpa 9000 di depan. Kuning = sudah diubah, belum dikirim. Merah = isi tidak sah.</li>"
-       + "<li>Baris 0: TF abhcEeXx . Loop (32781100.99 = Hawk 327, TF 1100, Loop 99) · pindah . sideways (0.1 = sideways on, 0.0 = off, 35981100.1 = pindah ke Hawk 359 TF 1100) · follow akun . level (58288.03 = ikut akun ...58288 dari L3, 0 = mati).</li>"
-       + "<li>Baris 3: exitUSD . add+ (100.03 = exitUSD 100 + add+ 3). Baris 4: lossUSD . add-. Baris 5: emaA . emaB (100.50 = emaA 100, emaB 50).</li>"
-       + "<li>OK = kirim semua perubahan (semua Hawk dan akun). Reset = Hawk ini kembali ke nilai awal tipe Hawk (seperti TP 5). Tutup = tutup semua posisi + pending Hawk ini (Hawk tetap jalan).</li>"
-       + "<li>Hasil dikirim bot ke grup laporan; data di sini diperbarui otomatis sesudah perintah (atau ketik /dash).</li></ul></details></div>";
-  }
+                        + (lebar ? "" : '<div class="aksi"><button id="ok"' + mati + ">OK</button></div>");
+  else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + '<div class="card">' + BANTUAN + "</div>";
+  else h += kartuHawk(a, c, Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), false, salah, kunci, mati);
   app.innerHTML = h + '<div id="salin"></div>';
   pasang();
 }
@@ -398,6 +441,8 @@ function pasang() {
   const a = akunIni(), c = chartIni(a);
   document.querySelectorAll("[data-akun]").forEach(b => { b.onclick = () => { pilihAkun = +b.dataset.akun; tampil(); }; });
   document.querySelectorAll("[data-chart]").forEach(b => { b.onclick = () => { pilihChart[a.login] = +b.dataset.chart; tampil(); }; });
+  const penuh = document.getElementById("penuh");
+  if (penuh) penuh.onclick = () => { try { if (tg.isFullscreen) tg.exitFullscreen(); else tg.requestFullscreen(); } catch (e) { alertTg("Layar penuh tidak didukung di sini."); } };
   if (!c) return;
   const kTP = a.login + "|" + c.sym;
   document.querySelectorAll("[data-hawk]").forEach(b => {
@@ -413,15 +458,30 @@ function pasang() {
   if (tp) tp.oninput = () => { tpBaru[kTP] = tp.value.trim(); tp.className = tpBaru[kTP] ? "ubah" : ""; };
   const ok = document.getElementById("ok");
   if (ok) ok.onclick = () => kirim([], [], "Kirim perubahan ke EA?");
-  if (!c.hawk.length) return;
-  const w = c.hawk[Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1)];
-  document.getElementById("reset").onclick = () => {
-    Object.keys(ubah).filter(k => k.startsWith(awalan(a, c, w))).forEach(k => delete ubah[k]);
-    kirim(["@" + a.login + " " + c.sym + " " + w.no + " reset 1"],
-          [a.login + " " + c.sym + " Hawk " + w.no + ": RESET ke nilai awal (parameter, TF, Loop 99, follow mati, cekSideways .1)"], "Reset Hawk " + w.no + " ke nilai awal?");
-  };
-  document.getElementById("tutup").onclick = () => kirim(["@" + a.login + " " + c.sym + " tutup " + w.no],
-    [a.login + " " + c.sym + " Hawk " + w.no + ": TUTUP " + w.npos + " posisi + " + w.npnd + " pending"], "Tutup semua posisi Hawk " + w.no + "?");
+  // Reset / Tutup per kartu Hawk (satu kartu di layar sempit, semua kartu di layar lebar).
+  document.querySelectorAll("[data-reset]").forEach(b => {
+    const w = c.hawk[+b.dataset.reset];
+    b.onclick = () => {
+      Object.keys(ubah).filter(k => k.startsWith(awalan(a, c, w))).forEach(k => delete ubah[k]);
+      kirim(["@" + a.login + " " + c.sym + " " + w.no + " reset 1"],
+            [a.login + " " + c.sym + " Hawk " + w.no + ": RESET ke nilai awal (parameter, TF, Loop 99, follow mati, cekSideways .1)"], "Reset Hawk " + w.no + " ke nilai awal?");
+    };
+  });
+  document.querySelectorAll("[data-tutup]").forEach(b => {
+    const w = c.hawk[+b.dataset.tutup];
+    b.onclick = () => kirim(["@" + a.login + " " + c.sym + " tutup " + w.no],
+      [a.login + " " + c.sym + " Hawk " + w.no + ": TUTUP " + w.npos + " posisi + " + w.npnd + " pending"], "Tutup semua posisi Hawk " + w.no + "?");
+  });
+}
+
+// Susunan dihitung ulang hanya bila jenis layar berganti (sempit <-> lebar), supaya kotak yang sedang diketik tidak hilang saat jendela digeser sedikit.
+let jedaUkuran = 0;
+function cekUkuran() { clearTimeout(jedaUkuran); jedaUkuran = setTimeout(() => { if (D && layarLebar() !== modeLebar) tampil(); }, 150); }
+window.addEventListener("resize", cekUkuran);
+if (tg && tg.onEvent) {
+  tg.onEvent("viewportChanged", cekUkuran);
+  tg.onEvent("fullscreenChanged", () => { if (D) tampil(); });
+  tg.onEvent("fullscreenFailed", e => alertTg("Layar penuh tidak bisa dibuka di perangkat ini" + (e && e.error ? " (" + e.error + ")" : "") + "."));
 }
 
 (async function mulai() {
