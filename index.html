@@ -665,7 +665,7 @@ function layarPin(pesan) {
   const app = document.getElementById("app");
   app.classList.remove("lebar");
   app.innerHTML = '<div class="card" style="max-width:420px;margin:40px auto"><h2 style="margin:0 0 4px">Dashboard hawk</h2>'
-    + '<div class="muted">Hanya lihat. Masukkan PIN pemilik.</div>' + (pesan ? '<div class="err" style="margin-top:8px">' + esc(pesan) + "</div>" : "")
+    + '<div class="muted">Masukkan PIN.</div>' + (pesan ? '<div class="err" style="margin-top:8px">' + esc(pesan) + "</div>" : "")
     + '<form id="fpin" class="row-tp" style="margin-top:10px"><input id="pin" type="password" autocomplete="current-password" placeholder="PIN" style="flex:1 1 auto;width:auto">'
     + '<button type="submit">Masuk</button></form>'
     + '<label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input id="ingat" type="checkbox" checked style="width:auto"> Ingat PIN di perangkat ini</label></div>';
@@ -682,7 +682,7 @@ function layarPin(pesan) {
 }
 
 function kepalaWeb() {
-  return "Dashboard hawk · " + webInfo.komp.length + " VPS · " + D.akun.length + " akun · diperbarui " + jamWIB(webInfo.kini, true) + " WIB"
+  return "Dashboard hawk" + (webInfo.grup ? " · <b>" + esc(webInfo.grup) + "</b>" : "") + " · " + webInfo.komp.length + " VPS · " + D.akun.length + " akun · diperbarui " + jamWIB(webInfo.kini, true) + " WIB"
        + (webInfo.putus ? ' · <span class="neg">koneksi terputus, mencoba lagi...</span>' : " · otomatis tiap " + WEB_JEDA / 1000 + " detik");
 }
 
@@ -921,7 +921,7 @@ async function ambilWeb() {
   }
   const lama = D && D.akun.length ? akunIni().login : null;
   D = { vps: "", ts, peran: 1, akun: Object.values(akun).sort((p, q) => p.vps.localeCompare(q.vps) || +p.login - +q.login) };
-  webInfo = { kini: j.kini, komp: komp.sort((p, q) => p.nama.localeCompare(q.nama)), cmd: j.cmd || [], umur: j.umur || 600, putus: false };
+  webInfo = { kini: j.kini, komp: komp.sort((p, q) => p.nama.localeCompare(q.nama)), cmd: j.cmd || [], umur: j.umur || 600, grup: j.grup || "", putus: false };
   if (lama) pilihAkun = Math.max(0, D.akun.findIndex(x => x.login === lama));
   if (!D.akun.length) {
     document.getElementById("app").innerHTML = '<div class="card">Belum ada data dari VPS mana pun. EA versi baru harus terpasang dan bot komputernya aktif.'
