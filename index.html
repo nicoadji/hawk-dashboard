@@ -88,6 +88,21 @@ details ul { padding-left: 18px; margin: 6px 0 0; }
 details li { margin: 3px 0; }
 pre { white-space: pre-wrap; word-break: break-all; background: var(--bg); padding: 8px; border-radius: 8px; font-size: 12px; }
 .pending { border: 1px dashed var(--edit); }
+/* Tampilan balon (dashboard web): satu balon per akun, luas balon sebanding balance, warna = floating. */
+#langit { position: relative; overflow: hidden; height: 70vh; min-height: 320px; margin-top: 8px; border-radius: 14px;
+          background: radial-gradient(ellipse at 50% 120%, #1d3557 0%, #141a26 55%, #0e1118 100%); touch-action: manipulation; }
+.balon { position: absolute; left: 0; top: 0; border-radius: 50% 50% 47% 47% / 54% 54% 46% 46%; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; text-align: center; color: #fff; cursor: pointer; user-select: none; will-change: transform;
+         text-shadow: 0 1px 2px rgba(0,0,0,.45); box-shadow: inset -8px -10px 18px rgba(0,0,0,.22), 0 6px 16px rgba(0,0,0,.35); line-height: 1.15; }
+.balon::before { content: ""; position: absolute; left: 22%; top: 14%; width: 22%; height: 16%; border-radius: 50%; background: rgba(255,255,255,.35); transform: rotate(-30deg); }
+.balon::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 0; height: 0; margin-left: -5px; border: 5px solid transparent;
+                border-bottom: 0; border-top: 8px solid var(--warna); }
+.balon .tali { position: absolute; left: 50%; top: 100%; width: 1px; height: 40%; margin-top: 6px; background: rgba(255,255,255,.28); pointer-events: none; }
+.balon .nm { font-weight: 600; max-width: 82%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.balon .bl { font-weight: 800; letter-spacing: .3px; }
+.balon .fl { opacity: .95; }
+.balon.basi { filter: grayscale(1); opacity: .45; }
+.ringkas { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -513,7 +528,7 @@ function tampil() {
   const a = akunIni(), c = chartIni(a), salah = semuaSalah(), lebar = modeLebar;
   let h = '<div class="kepala"><div class="muted">' + (LIHAT ? kepalaWeb()
         : "Dashboard hawk" + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts) + " WIB · ketik /dash di bot untuk data terbaru")
-        + "</div>" + (LIHAT ? '<button class="ghost kecil" id="keluar">Keluar</button>'
+        + "</div>" + (LIHAT ? '<button class="ghost kecil" id="kebalon">&#x1F388; Balon</button><button class="ghost kecil" id="keluar">Keluar</button>'
         : bisaPenuh() ? '<button class="ghost kecil" id="penuh">' + (tg.isFullscreen ? "Keluar layar penuh" : "&#x26F6; Layar penuh") + "</button>" : "") + "</div>"
         + (LIHAT ? peringatanWeb() : "");
   if (lebar) h += '<div class="akungrid">' + D.akun.map((x, i) => kartuAkun(x, D.akun.length > 1 ? i : -1, D.akun.length > 1 && x === a)).join("") + "</div>";
@@ -617,7 +632,10 @@ function pasang() {
 
 // Susunan dihitung ulang hanya bila jenis layar berganti (sempit <-> lebar), supaya kotak yang sedang diketik tidak hilang saat jendela digeser sedikit.
 let jedaUkuran = 0;
-function cekUkuran() { clearTimeout(jedaUkuran); jedaUkuran = setTimeout(() => { if (D && layarLebar() !== modeLebar) tampil(); }, 150); }
+function cekUkuran() {
+  clearTimeout(jedaUkuran);
+  jedaUkuran = setTimeout(() => { if (modeBalon) ukurBalon(); else if (D && layarLebar() !== modeLebar) tampil(); }, 150);
+}
 window.addEventListener("resize", cekUkuran);
 if (tg && tg.onEvent) {
   tg.onEvent("viewportChanged", cekUkuran);
@@ -667,7 +685,140 @@ function jadwalWeb() { clearTimeout(jedaWeb); if (!document.hidden && pinWeb) je
 
 function pasangKeluar() {
   const keluar = document.getElementById("keluar");
-  if (keluar) keluar.onclick = () => { try { localStorage.removeItem(SIMPAN_PIN); } catch (e) {} pinWeb = ""; clearTimeout(jedaWeb); D = null; layarPin(""); };
+  if (keluar) keluar.onclick = () => { try { localStorage.removeItem(SIMPAN_PIN); } catch (e) {} pinWeb = ""; clearTimeout(jedaWeb); hentikanBalon(); D = null; layarPin(""); };
+  const kebalon = document.getElementById("kebalon");
+  if (kebalon) kebalon.onclick = () => gantiBalon(true);
+}
+
+// ---------- tampilan balon ----------
+// Satu balon per akun: luas sebanding balance (akun sen dibagi 100 supaya setara USD), warna = floating (hijau untung, merah rugi, biru tanpa
+// posisi), abu-abu pudar = data VPS terlambat. Balon melayang dan saling memantul; ketuk balon = detail akun itu.
+const SIMPAN_BALON = "hawkDashBalon";
+let modeBalon = false, balon = {}, animBalon = 0, waktuBalon = 0;
+try { modeBalon = localStorage.getItem(SIMPAN_BALON) === "1"; } catch (e) {}
+
+const akunSen = a => /^(usc|euc|gbc|usdc?ent|cent)$/i.test(String(a.cur).trim()) || /cent/i.test(a.cur);
+const balanceUSD = a => (akunSen(a) ? a.bal / 100 : a.bal);
+const floatingUSD = a => (akunSen(a) ? a.fl / 100 : a.fl);
+function ringkasUang(x) {
+  const m = Math.abs(x), t = (x < 0 ? "-" : "");
+  return m >= 1e6 ? t + (m / 1e6).toFixed(m >= 1e7 ? 1 : 2) + "M" : m >= 1e3 ? t + (m / 1e3).toFixed(m >= 1e5 ? 0 : 1) + "K" : t + m.toFixed(0);
+}
+function warnaBalon(a) {
+  if (Math.abs(a.fl) < 0.005) return [212, 70, 52];
+  const kuat = Math.min(1, Math.abs(a.fl) / Math.max(1, a.bal) * 20);
+  return a.fl > 0 ? [145, 55 + 25 * kuat, 42] : [0, 60 + 25 * kuat, 50];
+}
+
+function gantiBalon(on) {
+  modeBalon = on;
+  try { localStorage.setItem(SIMPAN_BALON, on ? "1" : "0"); } catch (e) {}
+  if (on) tampilBalon(); else { hentikanBalon(); tampil(); }
+}
+
+function hentikanBalon() { cancelAnimationFrame(animBalon); animBalon = 0; balon = {}; }
+
+function kepalaBalon() {
+  let bal = 0, fl = 0, sen = 0;
+  for (const a of D.akun) { bal += balanceUSD(a); fl += floatingUSD(a); if (akunSen(a)) sen++; }
+  return '<div class="kepala"><div class="muted">' + kepalaWeb() + '<div class="ringkas"><span>Total balance <b>' + uang(bal) + "</b></span>"
+       + '<span>Floating <b class="' + (fl >= 0 ? "pos" : "neg") + '">' + tanda(fl) + "</b></span>" + (sen ? "<span>(" + sen + " akun sen dihitung /100)</span>" : "")
+       + "</div></div>" + '<button class="ghost kecil" id="kedetail">&#9776; Detail</button><button class="ghost kecil" id="keluar">Keluar</button></div>' + peringatanWeb();
+}
+
+// Dipanggil tiap data baru: kepala ditulis ulang, balon yang sudah ada hanya diganti isi + ukuran tujuannya (animasi tidak terputus).
+function tampilBalon() {
+  const app = document.getElementById("app");
+  app.classList.add("lebar");
+  let langit = document.getElementById("langit"), kepala = document.getElementById("kepalabalon");
+  if (!langit) {
+    app.innerHTML = '<div id="kepalabalon"></div><div id="langit"></div>';
+    langit = document.getElementById("langit"); kepala = document.getElementById("kepalabalon");
+    balon = {};
+  }
+  kepala.innerHTML = kepalaBalon();
+  pasangKeluar();
+  document.getElementById("kedetail").onclick = () => gantiBalon(false);
+  const W = langit.clientWidth, H = langit.clientHeight, ada = new Set();
+  D.akun.forEach((a, i) => {
+    ada.add(a.login);
+    let b = balon[a.login];
+    if (!b) {
+      const el = document.createElement("div");
+      el.className = "balon";
+      el.innerHTML = '<span class="nm"></span><span class="bl"></span><span class="fl"></span><span class="tali"></span>';
+      el.onclick = () => { pilihAkun = D.akun.findIndex(x => x.login === b.login); gantiBalon(false); };
+      langit.appendChild(el);
+      const sudut = Math.random() * Math.PI * 2, laju = 18 + Math.random() * 22;
+      b = balon[a.login] = { login: a.login, el, x: W * (0.15 + 0.7 * Math.random()), y: H * (0.15 + 0.7 * Math.random()), vx: Math.cos(sudut) * laju,
+                             vy: Math.sin(sudut) * laju, r: 0, rT: 0, fase: Math.random() * 6.28 };
+    }
+    const [h, s, l] = warnaBalon(a), w = "hsl(" + h + "," + s + "%," + l + "%)";
+    b.el.style.setProperty("--warna", w);
+    b.el.style.background = "radial-gradient(circle at 35% 30%, hsl(" + h + "," + s + "%," + Math.min(l + 22, 85) + "%), " + w + " 60%, hsl(" + h + "," + s + "%," + Math.max(l - 14, 12) + "%))";
+    b.el.classList.toggle("basi", !!a.basi);
+    b.el.title = a.login + " · " + a.nama + " · " + a.vps + " · balance " + uang(a.bal) + " " + a.cur + " · floating " + tanda(a.fl);
+    b.el.querySelector(".nm").textContent = (a.nama || a.login).split(" ")[0];
+    b.el.querySelector(".bl").textContent = ringkasUang(a.bal) + (akunSen(a) ? "¢" : "");
+    b.el.querySelector(".fl").textContent = Math.abs(a.fl) < 0.005 ? "" : (a.fl > 0 ? "+" : "") + ringkasUang(a.fl);
+    b.bal = Math.max(0, balanceUSD(a));
+  });
+  for (const k of Object.keys(balon)) if (!ada.has(k)) { balon[k].el.remove(); delete balon[k]; }
+  ukurBalon();
+  if (!animBalon) { waktuBalon = performance.now(); animBalon = requestAnimationFrame(geserBalon); }
+}
+
+// Jari-jari tujuan: luas semua balon ±40% langit (r sebanding akar balance), dengan batas kecil supaya tulisan tetap terbaca.
+function ukurBalon() {
+  const langit = document.getElementById("langit");
+  if (!langit) return;
+  // Langit mengisi sisa layar di bawah kepala (tinggi kepala berbeda di HP dan laptop), supaya halaman tidak perlu digeser.
+  langit.style.height = Math.max(320, window.innerHeight - (langit.getBoundingClientRect().top + window.scrollY) - 16) + "px";
+  const W = langit.clientWidth, H = langit.clientHeight, daftar = Object.values(balon);
+  const total = daftar.reduce((s, b) => s + b.bal, 0) || 1;
+  const k = Math.sqrt(0.4 * W * H / (Math.PI * total)), rMin = Math.max(24, Math.min(W, H) * 0.045), rMaks = Math.min(W, H) * 0.32;
+  for (const b of daftar) {
+    b.rT = Math.min(rMaks, Math.max(rMin, k * Math.sqrt(b.bal)));
+    const f = Math.max(9, Math.min(24, b.rT / 3.6));
+    b.el.style.fontSize = f + "px";
+    b.el.querySelector(".nm").style.display = b.rT < 34 ? "none" : "";
+    b.el.querySelector(".fl").style.display = b.rT < 44 ? "none" : "";
+    b.el.querySelector(".fl").style.fontSize = Math.max(9, f * 0.72) + "px";
+  }
+}
+
+function geserBalon(kini) {
+  const langit = document.getElementById("langit");
+  if (!langit || !modeBalon) { animBalon = 0; return; }
+  const dt = Math.min(0.05, (kini - waktuBalon) / 1000), W = langit.clientWidth, H = langit.clientHeight, daftar = Object.values(balon);
+  waktuBalon = kini;
+  for (const b of daftar) {
+    b.r += (b.rT - b.r) * Math.min(1, dt * 3);
+    b.fase += dt;
+    b.x += b.vx * dt; b.y += (b.vy + Math.sin(b.fase * 0.9) * 6) * dt;
+    if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); } else if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
+    if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); } else if (b.y > H - b.r * 1.25) { b.y = H - b.r * 1.25; b.vy = -Math.abs(b.vy); }
+  }
+  // Tumbukan: balon yang bersentuhan didorong terpisah dan bertukar kecepatan searah garis pusat (massa ~ luas).
+  for (let i = 0; i < daftar.length; i++)
+    for (let j = i + 1; j < daftar.length; j++) {
+      const p = daftar[i], q = daftar[j], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 0.01, min = p.r + q.r;
+      if (d >= min) continue;
+      const nx = dx / d, ny = dy / d, mp = p.r * p.r, mq = q.r * q.r, geser = (min - d) / (mp + mq);
+      p.x -= nx * geser * mq; p.y -= ny * geser * mq; q.x += nx * geser * mp; q.y += ny * geser * mp;
+      const v = (q.vx - p.vx) * nx + (q.vy - p.vy) * ny;
+      if (v >= 0) continue;
+      const imp = 2 * v / (mp + mq);
+      p.vx += imp * mq * nx; p.vy += imp * mq * ny; q.vx -= imp * mp * nx; q.vy -= imp * mp * ny;
+    }
+  for (const b of daftar) {
+    // Kecepatan dijaga di 15-45 px/detik supaya tetap melayang pelan seperti screensaver.
+    const laju = Math.hypot(b.vx, b.vy), mau = Math.min(45, Math.max(15, laju));
+    if (laju > 0) { b.vx *= mau / laju; b.vy *= mau / laju; }
+    b.el.style.width = 2 * b.r + "px"; b.el.style.height = 2.3 * b.r + "px";
+    b.el.style.transform = "translate(" + (b.x - b.r) + "px," + (b.y - b.r * 1.15) + "px)";
+  }
+  animBalon = requestAnimationFrame(geserBalon);
 }
 
 async function ambilWeb() {
@@ -710,7 +861,8 @@ async function ambilWeb() {
     document.getElementById("app").innerHTML = '<div class="card">Belum ada data dari VPS mana pun. EA versi baru harus terpasang dan bot komputernya aktif.'
       + ' <button class="ghost kecil" id="keluar">Keluar</button></div>';
     pasangKeluar();
-  } else tampil();
+  } else if (modeBalon) tampilBalon();
+  else tampil();
   jadwalWeb();
 }
 
