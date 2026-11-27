@@ -10,8 +10,11 @@
   Dashboard hawk (Telegram Mini App). Halaman statis: data EA ikut di fragmen URL (#v1.{zlib base64url}) yang dibuat penjaga bot
   (hawkTelegram.mqh, TgDashKirim) dan tidak pernah dikirim ke server halaman ini. Tombol OK / Reset / Tutup mengirim baris perintah channel
   ("@{akun} {simbol} ...") ke bot lewat Telegram.WebApp.sendData; EA menjalankannya seperti perintah channel.
-  Dibuka di browser biasa (tanpa fragmen, di luar Telegram) = dashboard web HANYA LIHAT: minta PIN pemilik, lalu membaca data terakhir semua
-  komputer dari relay POST /d2 (dikirim penjaga tiap komputer ke /d1, TgWebKirim) dan memperbaruinya otomatis tiap WEB_JEDA milidetik.
+  Dibuka di browser biasa (tanpa fragmen, di luar Telegram) = dashboard web: minta PIN pemilik, membaca data terakhir semua komputer dari relay
+  POST /d2 (dikirim penjaga tiap komputer ke /d1, TgWebKirim) dan memperbaruinya otomatis tiap WEB_JEDA milidetik (ditunda selama kotak diketik).
+  Tombol OK / Reset / Tutup sama dengan Mini App, tetapi baris perintahnya dikirim ke relay POST /d3 (PIN) untuk komputer pemilik akun; penjaga
+  komputer itu mengambilnya pada kiriman /d1 berikutnya (paling lama ~10 detik) dan menjalankannya seperti kiriman Mini App. Akun di komputer
+  yang EA-nya belum mendukung perintah web (v < 2) hanya bisa dilihat.
 -->
 <style>
 :root {
@@ -133,8 +136,9 @@ const NAMA = { MM: "MM", lot: "lot", maxLevel: "maxLevel", marginLev: "marginLev
                bidP: "exitBid+", bidM: "exitBid-", tutupDini: "tutupDini", eqP: "eq+", eqM: "eq-" };
 
 let D = null;
-// Dashboard web (browser biasa): hanya lihat, semua kotak terkunci, tanpa tombol perintah.
-let LIHAT = false;
+// Dashboard web (browser biasa, data dan perintah lewat relay). Akun di komputer yang EA-nya belum bisa menerima perintah web = hanya lihat.
+let WEB = false;
+const lihatAkun = a => WEB && !(a && a.v >= 2);
 let pilihAkun = 0;
 const pilihChart = {}, pilihHawk = {};
 const ubah = {};    // "login|simbol|Hawk|baris|kolom" -> teks yang diketik (belum dikirim)
@@ -401,8 +405,9 @@ function alertTg(m) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg
 function confirmTg(m, cb) { if (diTelegram() && tg.isVersionAtLeast("6.2")) { try { tg.showConfirm(potong256(m), cb); return; } catch (e) {} } cb(confirm(m)); }
 
 // Kirim baris perintah yang sudah disusun (satu tombol = satu jenis perubahan) lewat sendData sesudah konfirmasi; salah = kotak merah yang ikut
-// tombol itu. Di luar tombol bot: perintah ditampilkan untuk disalin.
-function kirim(baris, ringkas, judul, salah, kosong) {
+// tombol itu. Dashboard web: lewat relay /d3 (kirimWeb), bersih = dipanggil sesudah terkirim (kotak yang terkirim kembali kosong / nilai awal).
+// Di luar tombol bot dan web: perintah ditampilkan untuk disalin.
+function kirim(baris, ringkas, judul, salah, kosong, bersih) {
   if (salah && salah.length) { tampil(); alertTg("Ada kotak yang isinya tidak sah (merah). Perbaiki dulu."); return; }
   if (!baris.length) { alertTg(kosong || "Belum ada perubahan."); return; }
   const data = baris.join("\n");
@@ -412,6 +417,7 @@ function kirim(baris, ringkas, judul, salah, kosong) {
   if (baris.length > 40 || jenis.K > 9 || jenis.P > 9 || jenis.C > 9 || new Blob([data]).size > 4000) { alertTg("Perintah terlalu banyak untuk sekali kirim (maks 9 akun / Hawk). Kirim sebagian dulu."); return; }
   confirmTg(judul + "\n\n" + ringkas.slice(0, 12).join("\n") + (ringkas.length > 12 ? "\n..." : ""), ok => {
     if (!ok) return;
+    if (WEB) { kirimWeb(baris, bersih); return; }
     if (diTelegram()) {
       try { if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success"); tg.sendData(data); return; } catch (e) {}
     }
@@ -456,7 +462,7 @@ function kartuAkun(x, i, on) {
      + "<div>Balance <b>" + uang(x.bal) + " " + esc(x.cur) + "</b></div><div>Equity <b>" + uang(x.eq) + "</b></div>"
      + '<div>Floating <b class="' + (x.fl >= 0 ? "pos" : "neg") + '">' + tanda(x.fl) + '</b></div><div>Margin level <b class="' + (x.ml > 0 && x.ml < 300 ? "neg" : "") + '">'
      + (x.ml > 0 ? uang(x.ml) + "%" : "-") + "</b></div><div>Posisi <b>" + x.npos + "</b> · " + angka(x.lot, 2) + ' lot</div><div class="muted' + (x.basi ? " neg" : "") + '">data '
-     + jamWIB(x.ts, LIHAT) + " WIB</div></div></div>";
+     + jamWIB(x.ts, WEB) + " WIB</div></div></div>";
 }
 
 // Kode tipe dari EA (F1, H2, S3, M0) ditampilkan nama lengkap: Farmer1, Hunter2, Soldier3, Manual0.
@@ -514,10 +520,10 @@ function kartuHawk(a, c, hi, lebar, salah, kunci, mati) {
     });
     h += "</div>";
   });
-  if (!LIHAT)
+  if (!lihatAkun(a))
     h += '<div class="aksi"><button class="merah kiri" data-tutup="' + hi + '"' + (w.npos + w.npnd && !kunci ? "" : " disabled") + ">Tutup</button>"
        + '<button class="ghost" data-reset="' + hi + '"' + mati + ">Reset</button>" + '<button data-okhawk="' + hi + '"' + mati + ">OK</button></div>";
-  return h + (lebar || LIHAT ? "" : BANTUAN) + "</div>";
+  return h + (lebar || lihatAkun(a) ? "" : BANTUAN) + "</div>";
 }
 
 function tampil() {
@@ -526,11 +532,11 @@ function tampil() {
   app.classList.toggle("lebar", modeLebar);
   if (!D.akun.length) { app.innerHTML = '<div class="err">Tidak ada akun di data ini.</div>'; return; }
   const a = akunIni(), c = chartIni(a), salah = semuaSalah(), lebar = modeLebar;
-  let h = '<div class="kepala"><div class="muted">' + (LIHAT ? kepalaWeb()
+  let h = '<div class="kepala"><div class="muted">' + (WEB ? kepalaWeb()
         : "Dashboard hawk" + (D.vps ? " " + esc(D.vps) : "") + (D.peran === 2 ? " (tamu)" : "") + " · data " + jamWIB(D.ts) + " WIB · ketik /dash di bot untuk data terbaru")
-        + "</div>" + (LIHAT ? '<button class="ghost kecil" id="kebalon">&#x1F388; Balon</button><button class="ghost kecil" id="keluar">Keluar</button>'
+        + "</div>" + (WEB ? '<button class="ghost kecil" id="kebalon">&#x1F388; Balon</button><button class="ghost kecil" id="keluar">Keluar</button>'
         : bisaPenuh() ? '<button class="ghost kecil" id="penuh">' + (tg.isFullscreen ? "Keluar layar penuh" : "&#x26F6; Layar penuh") + "</button>" : "") + "</div>"
-        + (LIHAT ? peringatanWeb() : "");
+        + (WEB ? peringatanWeb() : "");
   if (lebar) h += '<div class="akungrid">' + D.akun.map((x, i) => kartuAkun(x, D.akun.length > 1 ? i : -1, D.akun.length > 1 && x === a)).join("") + "</div>";
   else {
     if (D.akun.length > 1)
@@ -543,16 +549,17 @@ function tampil() {
     h += '<div class="tabs">' + a.chart.map((x, i) => '<button class="tab' + (x === c ? " on" : "") + '" data-chart="' + i + '">' + esc(x.sym) + "</button>").join("") + "</div>";
   const kTP = a.login + "|" + c.sym, tpCls = salah.indexOf("tp|" + kTP) >= 0 ? "salah" : tpBaru[kTP] ? "ubah" : "";
   // Simbol yang tidak bisa ditulis di perintah channel (harus diawali huruf, ASCII tanpa spasi dan "|"): chart ini hanya bisa dilihat.
-  const kunci = LIHAT || !simbolSah(c.sym), mati = kunci ? " disabled" : "";
-  if (kunci && !LIHAT) h += '<div class="card err">Simbol ' + esc(c.sym) + " tidak bisa dipakai di perintah channel; chart ini hanya bisa dilihat.</div>";
+  const lihat = lihatAkun(a), kunci = lihat || !simbolSah(c.sym), mati = kunci ? " disabled" : "";
+  if (kunci && !lihat) h += '<div class="card err">Simbol ' + esc(c.sym) + " tidak bisa dipakai di perintah channel; chart ini hanya bisa dilihat.</div>";
+  if (lihat) h += '<div class="card muted">EA di ' + esc(a.vps || "VPS ini") + " belum versi baru: akun ini hanya bisa dilihat dari web (perintah lewat Telegram).</div>";
   const tpKini = '<div class="muted">' + (lebar ? esc(a.login) + " · " : "") + esc(c.sym) + " · TP LS Kendali sekarang: <b>" + esc(c.tp === "0" ? "kosong" : c.tp) + "</b></div>";
-  if (LIHAT) h += '<div class="card">' + tpKini + "</div>";
+  if (lihat) h += '<div class="card">' + tpKini + "</div>";
   else h += '<div class="card">' + tpKini
      + '<div class="row-tp"><input id="tp"' + mati + ' inputmode="decimal" placeholder="TP baru" value="' + esc(tpBaru[kTP] || "") + '" class="' + tpCls + '"><button id="oktp"' + mati + ">OK</button>"
      + pilihGlobal(mati) + '<button class="kanan" id="ok"' + mati + ">OK</button></div>"
      + '<div class="muted" style="margin-top:4px">1-4 jalan pintas · 5 reset · 6 tampilkan LS Param · 7 hapus LS Param · 8 tutup · 9 bersih · abh Hawk baru · abh3/abh4 BUY/SELL · abeDi Diversity (mis. 38190) · 9999 rem · 0 kosongkan</div></div>';
-  if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + "." + (LIHAT ? "" : " Buat lewat TP LS Kendali (mis. 327) lalu tekan OK di sebelahnya, atau pakai Diversity.") + "</div>";
-  else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + (LIHAT ? "" : '<div class="card">' + BANTUAN + "</div>");
+  if (!c.hawk.length) h += '<div class="card muted">Belum ada Hawk di ' + esc(c.sym) + "." + (lihat ? "" : " Buat lewat TP LS Kendali (mis. 327) lalu tekan OK di sebelahnya, atau pakai Diversity.") + "</div>";
+  else if (lebar) h += '<div class="hawkgrid">' + c.hawk.map((x, i) => kartuHawk(a, c, i, true, salah, kunci, mati)).join("") + "</div>" + (lihat ? "" : '<div class="card">' + BANTUAN + "</div>");
   else h += kartuHawk(a, c, Math.min(pilihHawk[kTP] || 0, c.hawk.length - 1), false, salah, kunci, mati);
   app.innerHTML = h + '<div id="salin"></div>';
   pasang();
@@ -603,16 +610,19 @@ function pasang() {
   const okTP = document.getElementById("oktp");
   if (okTP) okTP.onclick = () => {
     const salah = [], p = perintahTP(a, c, salah);
-    kirim(p.baris, p.ringkas, "Kirim TP LS Kendali?", salah, "Isi TP baru dulu.");
+    kirim(p.baris, p.ringkas, "Kirim TP LS Kendali?", salah, "Isi TP baru dulu.", () => { delete tpBaru[kTP]; });
   };
   const ok = document.getElementById("ok");
   if (ok) ok.onclick = () => {
     const p = perintahGlobal();
-    kirim(p.baris, p.ringkas, glob.semua ? "Buat Hawk di SEMUA akun?" : "Buat Hawk di akun ini?", [], "Pilih Diversity dulu (OK ini hanya untuk Diversity).");
+    kirim(p.baris, p.ringkas, glob.semua ? "Buat Hawk di SEMUA akun?" : "Buat Hawk di akun ini?", [], "Pilih Diversity dulu (OK ini hanya untuk Diversity).", () => { glob.n = 0; });
   };
   document.querySelectorAll("[data-okhawk]").forEach(b => {
     const w = c.hawk[+b.dataset.okhawk];
-    b.onclick = () => { const salah = [], p = perintahHawk(a, c, w, salah); kirim(p.baris, p.ringkas, "Kirim perubahan Hawk " + w.no + "?", salah); };
+    b.onclick = () => {
+      const salah = [], p = perintahHawk(a, c, w, salah);
+      kirim(p.baris, p.ringkas, "Kirim perubahan Hawk " + w.no + "?", salah, undefined, () => Object.keys(ubah).filter(k => k.startsWith(awalan(a, c, w))).forEach(k => delete ubah[k]));
+    };
   });
   // Reset / Tutup per kartu Hawk (satu kartu di layar sempit, semua kartu di layar lebar): hanya aksi itu.
   document.querySelectorAll("[data-reset]").forEach(b => {
@@ -645,10 +655,11 @@ if (tg && tg.onEvent) {
 
 // ---------- dashboard web (browser biasa, hanya lihat) ----------
 const RELAY_D2 = "https://minihawk-relay.minihawk.workers.dev/d2";
+const RELAY_D3 = "https://minihawk-relay.minihawk.workers.dev/d3";
 const SIMPAN_PIN = "hawkDashPin";
 const WEB_JEDA = 5000;   // ms antar pembaruan data selama halaman terlihat
 const WEB_BASI = 60;     // detik: kiriman komputer lebih tua dari ini = ditandai terlambat
-let pinWeb = "", jedaWeb = 0, webInfo = { kini: 0, komp: [], putus: false };
+let pinWeb = "", jedaWeb = 0, webInfo = { kini: 0, komp: [], cmd: [], umur: 600, putus: false };
 
 function layarPin(pesan) {
   const app = document.getElementById("app");
@@ -675,11 +686,58 @@ function kepalaWeb() {
        + (webInfo.putus ? ' · <span class="neg">koneksi terputus, mencoba lagi...</span>' : " · otomatis tiap " + WEB_JEDA / 1000 + " detik");
 }
 
-// VPS yang kirimannya terlambat (EA mati / VPS mati / internet VPS putus).
+// VPS yang kirimannya terlambat (EA mati / VPS mati / internet VPS putus), lalu status perintah web 10 menit terakhir.
 function peringatanWeb() {
   const basi = webInfo.komp.filter(x => webInfo.kini - x.ts > WEB_BASI);
-  return basi.length ? '<div class="card err">Data terlambat dari: ' + basi.map(x => esc(x.nama) + " (terakhir " + jamWIB(x.ts, true) + " WIB)").join(", ") + "</div>" : "";
+  return (basi.length ? '<div class="card err">Data terlambat dari: ' + basi.map(x => esc(x.nama) + " (terakhir " + jamWIB(x.ts, true) + " WIB)").join(", ") + "</div>" : "")
+       + statusPerintah();
 }
+
+function statusPerintah() {
+  const nama = k => (webInfo.komp.find(x => x.k === k) || { nama: "VPS " + k.slice(0, 4) }).nama;
+  const daftar = webInfo.cmd.filter(c => webInfo.kini - c.ts <= 600).slice(0, 5);
+  if (!daftar.length) return "";
+  return '<div class="card"><div class="muted">Perintah dari web (hasil dikirim bot ke grup laporan Telegram):</div>' + daftar.map(c => {
+    const st = c.st === 1 ? '<span class="pos">&#x2705; diterima VPS ' + jamWIB(c.tsd || c.ts, true) + "</span>"
+             : webInfo.kini - c.ts > webInfo.umur ? '<span class="neg">&#x26A0;&#xFE0F; tidak diambil VPS (kedaluwarsa, kirim ulang)</span>'
+             : "&#x23F3; menunggu VPS (paling lama ~10 detik)...";
+    return '<div style="font-size:13px;margin-top:4px">' + jamWIB(c.ts, true) + " · " + esc(nama(c.k)) + " · " + c.n + " baris · " + st + "</div>";
+  }).join("") + "</div>";
+}
+
+// Perintah dashboard web: baris dikelompokkan per komputer pemilik akunnya lalu dititipkan di relay /d3; akun di komputer yang EA-nya belum
+// mendukung perintah web dilewati (dikabari).
+async function kirimWeb(baris, bersih) {
+  const per = {}, lewat = [], gagal = [];
+  let terkirim = 0;
+  for (const b of baris) {
+    const login = b.slice(1, b.indexOf(" ")), a = D.akun.find(x => x.login === login);
+    if (!a || !a.komp || lihatAkun(a)) { lewat.push(login); continue; }
+    (per[a.komp] = per[a.komp] || []).push(b);
+  }
+  for (const k of Object.keys(per)) {
+    const nama = (webInfo.komp.find(x => x.k === k) || { nama: k }).nama;
+    let r, j = {};
+    try {
+      r = await fetch(RELAY_D3, { method: "POST", body: JSON.stringify({ pin: pinWeb, k, data: per[k].join("\n") }), cache: "no-store" });
+      j = await r.json();
+    } catch (e) { gagal.push(nama + " (koneksi)"); continue; }
+    if (r.status === 403 || r.status === 429) { pinWeb = ""; try { localStorage.removeItem(SIMPAN_PIN); } catch (e) {} D = null; layarPin("PIN ditolak; masuk lagi lalu kirim ulang."); return; }
+    if (r.ok) terkirim += per[k].length;
+    else gagal.push(nama + " (" + ({ versi: "EA belum versi baru", mati: "VPS tidak mengirim data", format: "perintah tidak sah" }[j.e] || "HTTP " + r.status) + ")");
+  }
+  if (terkirim && bersih) bersih();
+  if (gagal.length || lewat.length)
+    alertTg((terkirim ? terkirim + " perintah terkirim. " : "") + (gagal.length ? "Gagal: " + gagal.join(", ") + ". " : "")
+            + (lewat.length ? "Dilewati (EA VPS-nya belum versi baru): " + lewat.join(", ") + "." : ""));
+  if (terkirim) ambilWeb();
+  else tampil();
+}
+
+// Data baru tidak menimpa layar selama kotak / pilihan sedang diketik; ditampilkan sesudah selesai (jeda supaya klik OK tidak hilang).
+let renderTunda = false;
+const sedangKetik = () => { const e = document.activeElement; return !!e && (e.tagName === "INPUT" || e.tagName === "SELECT") && document.getElementById("app").contains(e); };
+document.addEventListener("focusout", () => setTimeout(() => { if (renderTunda && !sedangKetik() && D && !modeBalon) { renderTunda = false; tampil(); } }, 1500));
 
 function jadwalWeb() { clearTimeout(jedaWeb); if (!document.hidden && pinWeb) jedaWeb = setTimeout(ambilWeb, WEB_JEDA); }
 
@@ -821,6 +879,13 @@ function geserBalon(kini) {
   animBalon = requestAnimationFrame(geserBalon);
 }
 
+// Gambar ulang tampilan web yang aktif (balon / detail); detail ditunda selama kotak sedang diketik.
+function gambarWeb() {
+  if (modeBalon) tampilBalon();
+  else if (sedangKetik()) renderTunda = true;
+  else tampil();
+}
+
 async function ambilWeb() {
   clearTimeout(jedaWeb);
   let r, j;
@@ -829,7 +894,7 @@ async function ambilWeb() {
     j = await r.json();
   } catch (e) {
     if (!D) { layarPin("Relay tidak terjangkau. Periksa internet lalu coba lagi."); return; }
-    webInfo.putus = true; tampil(); jadwalWeb(); return;
+    webInfo.putus = true; gambarWeb(); jadwalWeb(); return;
   }
   if (r.status === 403 || r.status === 429) {
     try { localStorage.removeItem(SIMPAN_PIN); } catch (e) {}
@@ -838,35 +903,35 @@ async function ambilWeb() {
                               : "PIN salah." + (j.sisa > 0 ? " Sisa " + j.sisa + " percobaan sebelum dikunci 15 menit." : ""));
     return;
   }
-  if (!r.ok) { if (!D) layarPin("Dashboard web belum aktif di relay (" + (j.e || r.status) + ")."); else { webInfo.putus = true; tampil(); jadwalWeb(); } return; }
-  // Semua komputer digabung: akun diberi nama VPS-nya; akun yang sama di dua kiriman = yang terbaru.
+  if (!r.ok) { if (!D) layarPin("Dashboard web belum aktif di relay (" + (j.e || r.status) + ")."); else { webInfo.putus = true; gambarWeb(); jadwalWeb(); } return; }
+  // Semua komputer digabung: akun diberi nama VPS-nya, komputer (komp) dan versi EA-nya (v 2 = bisa menerima perintah web); akun yang sama di
+  // dua kiriman = yang terbaru.
   const komp = [], akun = {};
   let ts = 0;
   for (const x of j.komp) {
     let d;
     try { d = urai(new TextDecoder("utf-8").decode(await bukaZlib(b64url(x.d)))); } catch (e) { continue; }
     const nama = d.vps || "VPS " + x.k.slice(0, 4);
-    komp.push({ nama, ts: x.ts });
+    komp.push({ k: x.k, nama, ts: x.ts, v: x.v || 1 });
     ts = Math.max(ts, d.ts);
     for (const a of d.akun) {
-      a.vps = nama; a.basi = j.kini - x.ts > WEB_BASI;
+      a.vps = nama; a.basi = j.kini - x.ts > WEB_BASI; a.komp = x.k; a.v = x.v || 1;
       if (!akun[a.login] || akun[a.login].ts < a.ts) akun[a.login] = a;
     }
   }
   const lama = D && D.akun.length ? akunIni().login : null;
   D = { vps: "", ts, peran: 1, akun: Object.values(akun).sort((p, q) => p.vps.localeCompare(q.vps) || +p.login - +q.login) };
-  webInfo = { kini: j.kini, komp: komp.sort((p, q) => p.nama.localeCompare(q.nama)), putus: false };
+  webInfo = { kini: j.kini, komp: komp.sort((p, q) => p.nama.localeCompare(q.nama)), cmd: j.cmd || [], umur: j.umur || 600, putus: false };
   if (lama) pilihAkun = Math.max(0, D.akun.findIndex(x => x.login === lama));
   if (!D.akun.length) {
     document.getElementById("app").innerHTML = '<div class="card">Belum ada data dari VPS mana pun. EA versi baru harus terpasang dan bot komputernya aktif.'
       + ' <button class="ghost kecil" id="keluar">Keluar</button></div>';
     pasangKeluar();
-  } else if (modeBalon) tampilBalon();
-  else tampil();
+  } else gambarWeb();
   jadwalWeb();
 }
 
-document.addEventListener("visibilitychange", () => { if (LIHAT && pinWeb) { if (document.hidden) clearTimeout(jedaWeb); else ambilWeb(); } });
+document.addEventListener("visibilitychange", () => { if (WEB && pinWeb) { if (document.hidden) clearTimeout(jedaWeb); else ambilWeb(); } });
 
 (async function mulai() {
   const app = document.getElementById("app");
@@ -874,7 +939,7 @@ document.addEventListener("visibilitychange", () => { if (LIHAT && pinWeb) { if 
     // Telegram menambahkan parameternya sendiri sesudah fragmen ("#v1.xxx?tgWebApp..." / "&tgWebApp..."): ambil hanya token v1.
     const m = /v1\.([A-Za-z0-9_-]+)/.exec(location.hash || "");
     if (!m && !diTelegram()) {
-      LIHAT = true;
+      WEB = true;
       try { pinWeb = localStorage.getItem(SIMPAN_PIN) || ""; } catch (e) {}
       if (pinWeb) ambilWeb(); else layarPin("");
       return;
